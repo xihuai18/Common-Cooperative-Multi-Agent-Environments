@@ -1,4 +1,4 @@
-Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and VectorEnv Implementation with PettingZoo (and Gymnasium) Compatibility
+Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and VectorEnv Implementation with PettingZoo (and Gymnasium) Compatibility.
 
 Environment Supports:
 - [x] [Google Research Football](https://github.com/xihuai18/gfootball-gymnasium)
