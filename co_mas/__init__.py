@@ -1,3 +1,3 @@
-from co_mas import wrappers
+from co_mas import env, wrappers
 
-__all__ = ["wrappers"]
+__all__ = ["wrappers", "env"]

@@ -5,7 +5,7 @@ Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and Ve
 - [x] [Multi-agent MuJoCo](https://robotics.farama.org/envs/MaMuJoCo/)
 - [ ] StarCraft Multi-Agent Challenge ([SMAC](https://github.com/oxwhirl/smac) and [SMACv2](https://github.com/oxwhirl/smacv2))
 
-## Wrappers
+## Parallel Env Wrappers
 
 ### State, Observation, Action, Reward Wrappers
 - [x] AgentStateParallelEnvWrapper 
@@ -18,5 +18,5 @@ Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and Ve
 - [x] AECToParallelWrapper
 - [x] ParallelToAECWrapper
 
-VectorEnv Implementation
+## VectorEnv Implementation
 - [ ] XXX

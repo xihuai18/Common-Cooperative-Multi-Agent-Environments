@@ -12,5 +12,11 @@ setup(
     license="MIT License",
     keywords="Multi-agent Environment, PettingZoo, Multi-Agent Reinforcement Learning",
     packages=find_packages(),
-    install_requires=["pettingzoo>=1.24.3", "gymnasium", "pre-commit", "supersuit>=3.9.2"],
+    install_requires=[
+        "pettingzoo>=1.24.3",
+        "gymnasium",
+        "pre-commit",
+        "supersuit>=3.9.2",
+        "loguru",
+    ],
 )
