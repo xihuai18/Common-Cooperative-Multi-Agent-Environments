@@ -8,7 +8,7 @@ libdirectfb-dev libst-dev mesa-utils xvfb x11vnc
 pip install -U pip setuptools psutil wheel
 conda install anaconda::py-boost -y
 ## install gfootball
-pip install git+https://github.com/xihuai18/gfootball-gymnasium.git
+pip install git+https://github.com/xihuai18/GFootball-Gymnasium-Pettingzoo.git
 
 ## test
 export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libffi.so.7 

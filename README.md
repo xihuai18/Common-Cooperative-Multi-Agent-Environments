@@ -1,9 +1,9 @@
 Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and VectorEnv Implementation with PettingZoo (and Gymnasium) Compatibility.
 
 ## Environment Supports
-- [x] [Google Research Football](https://github.com/xihuai18/gfootball-gymnasium)
-- [x] [Multi-agent MuJoCo](https://robotics.farama.org/envs/MaMuJoCo/)
-- [ ] StarCraft Multi-Agent Challenge ([SMAC](https://github.com/oxwhirl/smac) and [SMACv2](https://github.com/oxwhirl/smacv2))
+- [x] [Google Research Football](https://github.com/xihuai18/GFootball-Gymnasium-Pettingzoo)
+- [x] [Multi-agent MuJoCo](https://github.com/xihuai18/MaMuJoCo-PettingZoo)
+- [ ] [StarCraft Multi-Agent Challenge](https://github.com/xihuai18/SMAC-PettingZoo) ([SMAC](https://github.com/oxwhirl/smac) and [SMACv2](https://github.com/oxwhirl/smacv2))
 
 ## Parallel Env Wrappers
 
@@ -17,6 +17,9 @@ Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and Ve
 ### Improved PettingZoo Wrappers
 - [x] AECToParallelWrapper
 - [x] ParallelToAECWrapper
+
+### Base Environment Abstractions
+- [x] ParallelEnv: ParallelEnv with randomness control as in Gymnasium.
 
 ## VectorEnv Implementation
 - [ ] XXX
