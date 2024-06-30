@@ -3,7 +3,7 @@ Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and Ve
 ## Environment Supports
 - [x] [Google Research Football](https://github.com/xihuai18/GFootball-Gymnasium-Pettingzoo)
 - [x] [Multi-agent MuJoCo](https://github.com/xihuai18/MaMuJoCo-PettingZoo)
-- [ ] [StarCraft Multi-Agent Challenge](https://github.com/xihuai18/SMAC-PettingZoo) ([SMAC](https://github.com/oxwhirl/smac) and [SMACv2](https://github.com/oxwhirl/smacv2))
+- [x] [StarCraft Multi-Agent Challenge](https://github.com/xihuai18/SMAC-PettingZoo) ([SMAC](https://github.com/oxwhirl/smac) and [SMACv2](https://github.com/oxwhirl/smacv2))
 
 ## Parallel Env Wrappers
 

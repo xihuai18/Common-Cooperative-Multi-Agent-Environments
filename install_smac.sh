@@ -71,5 +71,5 @@ mv *.SC2Map "$MAP_DIR/SMAC_Maps"
 
 echo 'StarCraft II and SMAC are installed.'
 
-
-# TODO: smac and smacv2
+# install smac_pettingzoo
+pip install git+https://github.com/xihuai18/SMAC-PettingZoo.git
