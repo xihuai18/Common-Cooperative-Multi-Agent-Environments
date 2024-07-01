@@ -9,6 +9,20 @@ Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and Ve
 
 The scripts `install_grf.sh`, `install_mamujoco.sh` and `install_smac.sh` include detailed installation guides.
 
+### PyPi from sources
+
+```shell
+pip install git+https://github.com/xihuai18/Common-Cooperative-Multi-Agent-Environments.git
+```
+
+### Install from GitHub sources
+```shell
+git clone https://github.com/xihuai18/Common-Cooperative-Multi-Agent-Environments.git
+cd Common-Cooperative-Multi-Agent-Environments
+pip install -r requirements.txt
+pip install .
+```
+
 ## Parallel Env Wrappers
 
 ### State, Observation, Action, Reward Wrappers
