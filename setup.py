@@ -15,8 +15,7 @@ setup(
     install_requires=[
         "pettingzoo>=1.24.3",
         "gymnasium",
-        "pre-commit",
-        "supersuit>=3.9.2",
         "loguru",
+        "pre-commit",
     ],
 )
