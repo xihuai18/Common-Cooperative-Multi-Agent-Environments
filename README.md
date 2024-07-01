@@ -5,6 +5,10 @@ Commonly-used Multi-agent Environments Installation, Convenient Wrappers, and Ve
 - [x] [Multi-agent MuJoCo](https://github.com/xihuai18/MaMuJoCo-PettingZoo)
 - [x] [StarCraft Multi-Agent Challenge](https://github.com/xihuai18/SMAC-PettingZoo) ([SMAC](https://github.com/oxwhirl/smac) and [SMACv2](https://github.com/oxwhirl/smacv2))
 
+## Installation
+
+The scripts `install_grf.sh`, `install_mamujoco.sh` and `install_smac.sh` include detailed installation guides.
+
 ## Parallel Env Wrappers
 
 ### State, Observation, Action, Reward Wrappers
