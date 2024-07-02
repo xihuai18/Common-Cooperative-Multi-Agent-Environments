@@ -5,6 +5,8 @@ from gymnasium.utils import seeding
 from pettingzoo.utils.env import ActionType, AgentID, ObsType
 from pettingzoo.utils.env import ParallelEnv as _ParallelEnv
 
+__all__ = ["ParallelEnv"]
+
 
 class ParallelEnv(_ParallelEnv[AgentID, ObsType, ActionType]):
     """
@@ -38,6 +40,19 @@ class ParallelEnv(_ParallelEnv[AgentID, ObsType, ActionType]):
     def np_random(self, rng: np.random.Generator) -> None:
         self._np_random = rng
         self._np_random_seed = -1
+
+    def state(self) -> np.ndarray:
+        """Returns the state.
+
+        State returns a global view of the environment appropriate for
+        centralized training decentralized execution methods like QMIX
+        """
+        assert hasattr(self, "state_space"), "Environment does not have a state_space attribute"
+        raise NotImplementedError(
+            "state() method has not been implemented in the environment {}.".format(
+                self.metadata.get("name", self.__class__.__name__)
+            )
+        )
 
     def __del__(self):
         """Forcing the environment to close."""

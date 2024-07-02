@@ -1,0 +1,205 @@
+"""
+High performance vectorized multi-agent environment for PettingZoo Parallel environments. 
+
+Modified from https://gymnasium.farama.org/api/vector/#observation_space.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, Generic, List, Sequence, Tuple
+
+import gymnasium as gym
+from pettingzoo.utils.env import ActionType, AgentID, ObsType, ParallelEnv
+
+from co_mas.wrappers import AutoResetParallelEnvWrapper
+
+__all__ = ["VectorParallelEnv", "BaseVectorParallelEnvWrapper"]
+
+
+class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
+    """
+    High performance vectorized multi-agent environment for PettingZoo Parallel environments.
+    All sub-environments must have the same observation, state and action spaces.
+    NOTE: all sub-environments will be reset automatically if there is not agent in the environment, except for those wrapped by `AutoResetParallelEnvWrapper`.
+
+    We use Tuple to construct the spaces of VectorParallelEnv, each element of the Tuple is a gym space from a sub-environment.
+    """
+
+    metadata: dict[str, Any] = {}
+
+    num_envs: int
+    envs: Sequence[ParallelEnv]
+    possible_agents: list[AgentID]
+    agents: Tuple[List[AgentID]]
+    envs_have_agents: Dict[AgentID, Tuple[int]]
+
+    # Spaces for each agents and all sub-environment
+    observation_spaces: dict[AgentID, gym.spaces.Tuple]
+    action_spaces: dict[AgentID, gym.spaces.Tuple]
+
+    # Spaces for each agents and one sub-environment
+    single_observation_space: dict[AgentID, gym.spaces.Space]
+    single_action_space: dict[AgentID, gym.spaces.Space]
+
+    # if auto_need_autoreset_envs[i] == True, manually reset it, otherwise env `i` will be reset automatically.
+    _need_autoreset_envs: List[bool]
+
+    closed: bool = False
+
+    def _mark_envs(self):
+        def _mark_env(env: ParallelEnv):
+            # check if the environment will autoreset
+            while hasattr(env, "env"):
+                if isinstance(env, AutoResetParallelEnvWrapper):
+                    return False
+                env = env.env
+            return True
+
+        self._need_autoreset_envs = [_mark_env(env) for env in self.envs]
+
+    def reset(
+        self,
+        seed: int | None = None,
+        options: dict | None = None,
+    ) -> Tuple[Dict[AgentID, Tuple[ObsType]], Dict[AgentID, Dict]]:
+        """
+        Reset all parallel environments and return a batch of initial observations and info.
+        """
+        raise NotImplementedError
+
+    def step(self, actions: Dict[AgentID, Tuple[ActionType]]) -> Tuple[
+        Dict[AgentID, Tuple[ObsType]],
+        Dict[AgentID, Tuple[float]],
+        Dict[AgentID, Tuple[bool]],
+        Dict[AgentID, Tuple[bool]],
+        Dict[AgentID, Dict],
+    ]:
+        """
+        Step all parallel environments with the given actions and return a batch of results.
+        """
+        raise NotImplementedError
+
+    def close(self) -> None:
+        """
+        Close all parallel environments.
+        """
+        if self.closed:
+            return
+        self.closed = True
+
+    @property
+    def unwrapped(self) -> VectorParallelEnv:
+        return self
+
+    def __del__(self):
+        """Forcing the environment to close."""
+        self.close()
+
+    def __exit__(self, *args: Any) -> bool:
+        """Support with-statement for the environment and closes the environment."""
+        self.close()
+        # propagate exception
+        return False
+
+    def __repr__(self) -> str:
+        """Returns a string representation of the vector environment."""
+
+        return f"VectorParallelEnv(num_envs={self.num_envs})"
+
+    def state(self) -> Tuple:
+        """
+        Return the state of all parallel environments.
+        """
+        raise NotImplementedError
+
+    def observation_space(self, agent: AgentID) -> gym.Space:
+        """
+        Return the observation space for the given agent.
+        """
+        return self.observation_spaces[agent]
+
+    def action_space(self, agent: AgentID) -> gym.Space:
+        """
+        Return the action space for the given agent.
+        """
+        return self.action_spaces[agent]
+
+    def envs_have_agent(self, agent: AgentID) -> Tuple[int]:
+        """
+        return the sub environment indices that have the agent
+        """
+        return self.envs_have_agents[agent]
+
+    def _merge_info(self, env_infos: Tuple[Dict[AgentID, Dict]]) -> Dict[AgentID, Dict]:
+        """
+        Merge env_infos into vector_info.
+        """
+        vector_info = {}
+
+        def _merge(_infos: Tuple[Dict], _key: Any) -> Dict:
+            """
+            Merge values in _env_infos for _key into a tuple.
+            """
+            _merged_info = {}
+            _dummy_info = _infos[0]
+            if isinstance(_dummy_info[_key], dict):
+                for _k in _dummy_info[_key].keys():
+                    _merged_info[_k] = _merge(_infos=tuple(_info[_key] for _info in _infos), _key=_k)
+            else:
+                _merged_info = tuple([_info[_key] for _info in _infos])
+            return _merged_info
+
+        for agent in self.possible_agents:
+            infos_for_agent = tuple(_env_info[agent] for _env_info in env_infos if agent in _env_info)
+            if len(infos_for_agent) <= 0:
+                continue
+            vector_info[agent] = {}
+            dummy_info = infos_for_agent[0]
+            for key in dummy_info.keys():
+                vector_info[agent][key] = _merge(infos_for_agent, _key=key)
+
+        return vector_info
+
+    @property
+    def num_agents(self) -> Tuple[int]:
+        raise NotImplementedError
+
+    @property
+    def max_num_agents(self) -> int:
+        return len(self.possible_agents)
+
+
+class BaseVectorParallelEnvWrapper(VectorParallelEnv[AgentID, ObsType, ActionType]):
+    """
+    Base wrapper for VectorParallelEnv.
+    """
+
+    def __init__(self, env: VectorParallelEnv[AgentID, ObsType, ActionType]):
+        super().__init__()
+        self.env = env
+
+    def __getattr__(self, name: str):
+        """Returns an attribute with ``name``, unless ``name`` starts with an underscore."""
+        if name.startswith("_"):
+            raise AttributeError(f"accessing private attribute '{name}' is prohibited")
+        return getattr(self.env, name)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.env})"
+
+    def reset(
+        self, seed: int | None = None, options: Dict | None = None
+    ) -> Tuple[Dict[AgentID, Tuple[ObsType]], Dict[AgentID, Tuple[dict]]]:
+        return self.env.reset(seed, options)
+
+    def step(self, actions: Tuple[Dict[AgentID, ActionType]] | Tuple) -> Tuple[
+        Dict[AgentID, Tuple[ObsType]],
+        Dict[AgentID, Tuple[float]],
+        Dict[AgentID, Tuple[bool]],
+        Dict[AgentID, Tuple[bool]],
+        Dict[AgentID, Dict[Any, Tuple]],
+    ]:
+        return self.env.step(actions)
+
+    def state(self) -> Tuple:
+        return self.env.state()

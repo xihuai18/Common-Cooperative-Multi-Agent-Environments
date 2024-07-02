@@ -46,5 +46,5 @@ class AutoResetParallelEnvWrapper(pettingzoo.utils.BaseParallelWrapper):
                 truncated[agent] = False
         else:
             observation, reward, terminated, truncated, info = super().step(actions)
-        self._autoreset = all(terminated.values()) or all(truncated.values())
+        self._autoreset = len(self.agents) <= 0
         return observation, reward, terminated, truncated, info
