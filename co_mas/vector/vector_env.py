@@ -6,12 +6,12 @@ Modified from https://gymnasium.farama.org/api/vector/#observation_space.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Generic, List, Sequence, Tuple
+import functools
+from collections import defaultdict
+from typing import Any, Dict, Generic, List, Tuple
 
 import gymnasium as gym
-from pettingzoo.utils.env import ActionType, AgentID, ObsType, ParallelEnv
-
-from co_mas.wrappers import AutoResetParallelEnvWrapper
+from pettingzoo.utils.env import ActionType, AgentID, ObsType
 
 __all__ = ["VectorParallelEnv", "BaseVectorParallelEnvWrapper"]
 
@@ -23,15 +23,19 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
     NOTE: all sub-environments will be reset automatically if there is not agent in the environment, except for those wrapped by `AutoResetParallelEnvWrapper`.
 
     We use Tuple to construct the spaces of VectorParallelEnv, each element of the Tuple is a gym space from a sub-environment.
+
+    `envs_have_agents` and `envs_have_agent` are used to record the sub-environment indices that have the agent, which is useful for constructing actions.
+
+    # TODO: doc for input and output
     """
 
     metadata: dict[str, Any] = {}
 
     num_envs: int
-    envs: Sequence[ParallelEnv]
+
     possible_agents: list[AgentID]
     agents: Tuple[List[AgentID]]
-    envs_have_agents: Dict[AgentID, Tuple[int]]
+    envs_have_agents: Dict[AgentID, Tuple[int]] = defaultdict(list)
 
     # Spaces for each agents and all sub-environment
     observation_spaces: dict[AgentID, gym.spaces.Tuple]
@@ -45,17 +49,6 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
     _need_autoreset_envs: List[bool]
 
     closed: bool = False
-
-    def _mark_envs(self):
-        def _mark_env(env: ParallelEnv):
-            # check if the environment will autoreset
-            while hasattr(env, "env"):
-                if isinstance(env, AutoResetParallelEnvWrapper):
-                    return False
-                env = env.env
-            return True
-
-        self._need_autoreset_envs = [_mark_env(env) for env in self.envs]
 
     def reset(
         self,
@@ -124,13 +117,14 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         """
         return self.action_spaces[agent]
 
+    @functools.lru_cache()
     def envs_have_agent(self, agent: AgentID) -> Tuple[int]:
         """
         return the sub environment indices that have the agent
         """
         return self.envs_have_agents[agent]
 
-    def _merge_info(self, env_infos: Tuple[Dict[AgentID, Dict]]) -> Dict[AgentID, Dict]:
+    def _merge_infos(self, env_infos: Tuple[Dict[AgentID, Dict]]) -> Dict[AgentID, Dict]:
         """
         Merge env_infos into vector_info.
         """
@@ -159,6 +153,16 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
                 vector_info[agent][key] = _merge(infos_for_agent, _key=key)
 
         return vector_info
+
+    def _construct_batch_result_in_place(self, result: Dict[AgentID, List]) -> Dict[AgentID, Tuple]:
+        """
+        remove empty agent results and convert them to tuple in-place.
+        """
+        for agent in self.possible_agents:
+            if len(result[agent]) <= 0:
+                result.pop(agent)
+            else:
+                result[agent] = tuple(result[agent])
 
     @property
     def num_agents(self) -> Tuple[int]:
