@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Callable, Dict, Iterator, Sequence, Tuple
+from typing import Callable, Dict, Iterator, Sequence, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -25,16 +25,18 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self.num_envs = len(self.envs)
 
         self.metadata = self.envs[0].metadata
-        self.single_observation_space = self.envs[0].observation_space
-        self.single_action_space = self.envs[0].action_space
+        self.single_observation_spaces = self.envs[0].observation_spaces
+        self.single_action_spaces = self.envs[0].action_spaces
         self.possible_agents = self.envs[0].possible_agents
         self._check_spaces()
 
         self.observation_spaces = {
-            agent: gym.spaces.Tuple([self.envs[0].observation_space] * self.num_envs) for agent in self.possible_agents
+            agent: gym.spaces.Tuple([self.envs[0].observation_space(agent)] * self.num_envs)
+            for agent in self.possible_agents
         }
         self.action_spaces = {
-            agent: gym.spaces.Tuple([self.envs[0].action_space] * self.num_envs) for agent in self.possible_agents
+            agent: gym.spaces.Tuple([self.envs[0].action_space(agent)] * self.num_envs)
+            for agent in self.possible_agents
         }
         self.agents = tuple(env.agents for env in self.envs)
         self.agents_old = tuple([] for _ in self.envs)
@@ -158,13 +160,29 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self._autoreset_envs = np.array([len(env.agents) == 0 for env in self.envs], dtype=bool)
         self._autoreset_envs = np.logical_and(self._autoreset_envs, self._need_autoreset_envs)
 
+        self.agents_old = self.agents
+        self.agents = tuple(env.agents for env in self.envs)
+        self._update_envs_have_agents()
+
         return observation, reward, termination, truncation, info
+
+    def close(self):
+        if self.closed:
+            return
+        for env in self.envs:
+            env.close()
+        self.closed = True
+
+    def state(self) -> Tuple | Dict[AgentID, Tuple]:
+        pass
+        # TODO: define `self.state_space` and `self.single_state_space`, otherwise raise NotImplementedError or RuntimeError to warn using `AgentStateVectorParallelEnvWrapper`
+
+    @property
+    def num_agents(self) -> Tuple[int]:
+        return tuple(env.num_agents for env in self.envs)
 
     def __getattr__(self, name: str) -> Tuple:
         """Returns an attribute with ``name``, unless ``name`` starts with an underscore."""
         if name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
         return (getattr(env, name) for env in self.envs)
-
-    def __setattr__(self, name: str, value: Any):
-        """Set attribute for self.envs"""

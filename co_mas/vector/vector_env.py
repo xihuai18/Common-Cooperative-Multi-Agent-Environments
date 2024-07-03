@@ -42,8 +42,8 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
     action_spaces: dict[AgentID, gym.spaces.Tuple]
 
     # Spaces for each agents and one sub-environment
-    single_observation_space: dict[AgentID, gym.spaces.Space]
-    single_action_space: dict[AgentID, gym.spaces.Space]
+    single_observation_spaces: dict[AgentID, gym.spaces.Space]
+    single_action_spaces: dict[AgentID, gym.spaces.Space]
 
     # if auto_need_autoreset_envs[i] == True, manually reset it, otherwise env `i` will be reset automatically.
     _need_autoreset_envs: List[bool]
@@ -76,9 +76,7 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         """
         Close all parallel environments.
         """
-        if self.closed:
-            return
-        self.closed = True
+        raise NotImplementedError
 
     @property
     def unwrapped(self) -> VectorParallelEnv:
@@ -105,11 +103,23 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         """
         raise NotImplementedError
 
+    def single_observation_space(self, agent: AgentID) -> gym.Space:
+        """
+        Return the observation space for the given agent in a sub-environment.
+        """
+        return self.single_observation_spaces[agent]
+
     def observation_space(self, agent: AgentID) -> gym.Space:
         """
         Return the observation space for the given agent.
         """
         return self.observation_spaces[agent]
+
+    def single_action_space(self, agent: AgentID) -> gym.Space:
+        """
+        Return the action space for the given agent in a sub-environment.
+        """
+        return self.single_action_spaces[agent]
 
     def action_space(self, agent: AgentID) -> gym.Space:
         """
@@ -166,10 +176,12 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
 
     @property
     def num_agents(self) -> Tuple[int]:
+        """return the number of agents in each sub-environment."""
         raise NotImplementedError
 
     @property
     def max_num_agents(self) -> int:
+        """return the maximum number of agents in all sub-environments."""
         return len(self.possible_agents)
 
 
