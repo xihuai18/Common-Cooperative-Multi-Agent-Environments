@@ -50,15 +50,15 @@ class SyncVectorParallelEnv(VectorParallelEnv):
     def _check_spaces(self) -> bool:
         """Check that each of the environments obs and action spaces are equivalent to the single obs and action space."""
         for env in self.envs:
-            if not (env.observation_space == self.single_observation_space):
+            if not (env.observation_spaces == self.single_observation_spaces):
                 raise RuntimeError(
-                    f"Some environments have an observation space different from `{self.single_observation_space}`. "
+                    f"Some environments have an observation space different from `{self.single_observation_spaces}`. "
                     "In order to batch observations, the observation spaces from all environments must be equal."
                 )
 
-            if not (env.action_space == self.single_action_space):
+            if not (env.action_spaces == self.single_action_spaces):
                 raise RuntimeError(
-                    f"Some environments have an action space different from `{self.single_action_space}`. "
+                    f"Some environments have an action space different from `{self.single_action_spaces}`. "
                     "In order to batch actions, the action spaces from all environments must be equal."
                 )
 
