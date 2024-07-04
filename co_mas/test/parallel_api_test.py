@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import warnings
 
-import numpy as np
 from loguru import logger
 from pettingzoo.test.api_test import missing_attr_warning
 from pettingzoo.utils.conversions import (
@@ -10,32 +9,10 @@ from pettingzoo.utils.conversions import (
     parallel_to_aec_wrapper,
     turn_based_aec_to_parallel_wrapper,
 )
-from pettingzoo.utils.env import ActionType, AgentID, ObsType
 from pettingzoo.utils.wrappers import BaseWrapper
 
 from co_mas.env import ParallelEnv
-
-
-def sample_action(
-    env: ParallelEnv[AgentID, ObsType, ActionType],
-    obs: dict[AgentID, ObsType],
-    agent: AgentID,
-    info: dict[AgentID, dict],
-) -> ActionType:
-    # logger.debug(info)
-    # logger.debug(agent)
-    agent_obs = obs[agent]
-    if isinstance(agent_obs, dict) and "action_mask" in agent_obs:
-        legal_actions = np.flatnonzero(agent_obs["action_mask"])
-        if len(legal_actions) == 0:
-            return 0
-        return env.np_random.choice(legal_actions)
-    elif "action_mask" in info[agent]:
-        legal_actions = np.flatnonzero(info[agent]["action_mask"])
-        if len(legal_actions) == 0:
-            return 0
-        return env.np_random.choice(legal_actions)
-    return env.action_space(agent).sample()
+from co_mas.test.utils import sample_action
 
 
 def parallel_api_test(par_env: ParallelEnv, num_cycles=1000):

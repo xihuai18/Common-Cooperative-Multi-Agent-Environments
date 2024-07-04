@@ -38,6 +38,11 @@ class SyncVectorParallelEnv(VectorParallelEnv):
             agent: gym.spaces.Tuple([self.envs[0].action_space(agent)] * self.num_envs)
             for agent in self.possible_agents
         }
+        if hasattr(self.envs[0], "state_space"):
+            if not hasattr(self, "state_spaces"):
+                self.single_state_space = self.envs[0].state_space
+                self.state_space = tuple(env.state_space for env in self.envs)
+
         self.agents = tuple(env.agents for env in self.envs)
         self.agents_old = tuple([] for _ in self.envs)
         self.envs_have_agents = defaultdict(list)
@@ -46,6 +51,11 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self._mark_envs()
         # record which environments will autoreset
         self._autoreset_envs = np.zeros(shape=(self.num_envs,), dtype=bool)
+
+    def __repr__(self) -> str:
+        """Returns a string representation of the vector environment."""
+
+        return f"SyncVectorParallelEnv(num_envs={self.num_envs})"
 
     def _check_spaces(self) -> bool:
         """Check that each of the environments obs and action spaces are equivalent to the single obs and action space."""
@@ -77,8 +87,10 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
     def _update_envs_have_agents(self):
         for env_id, (_agents_in_env, _agents_in_env_old) in enumerate(zip(self.agents, self.agents_old)):
-            add_agents = set(_agents_in_env) - set(_agents_in_env_old)
-            remove_agents = set(_agents_in_env_old) - set(_agents_in_env)
+            _agents_in_env = set(_agents_in_env)
+            _agents_in_env_old = set(_agents_in_env_old)
+            add_agents = _agents_in_env - _agents_in_env_old
+            remove_agents = _agents_in_env_old - _agents_in_env
             for agent in add_agents:
                 self.envs_have_agents[agent].append(env_id)
             for agent in remove_agents:
@@ -160,7 +172,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self._autoreset_envs = np.array([len(env.agents) == 0 for env in self.envs], dtype=bool)
         self._autoreset_envs = np.logical_and(self._autoreset_envs, self._need_autoreset_envs)
 
-        self.agents_old = self.agents
+        self.agents_old = self.agents[:]
         self.agents = tuple(env.agents for env in self.envs)
         self._update_envs_have_agents()
 
@@ -174,8 +186,14 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self.closed = True
 
     def state(self) -> Tuple | Dict[AgentID, Tuple]:
-        pass
-        # TODO: define `self.state_space` and `self.single_state_space`, otherwise raise NotImplementedError or RuntimeError to warn using `AgentStateVectorParallelEnvWrapper`
+        if not hasattr(self, "state_space"):
+            if hasattr(self.envs[0], "state_spaces"):
+                raise RuntimeError(
+                    "Please use `AgentStateVectorParallelEnvWrapper` to get the state for each agent since sub-environments have `state_spaces` functions."
+                )
+            else:
+                raise RuntimeError("Sub-environments do not have a `state` function.")
+        return tuple(env.state() for env in self.envs)
 
     @property
     def num_agents(self) -> Tuple[int]:

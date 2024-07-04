@@ -22,7 +22,7 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
     All sub-environments must have the same observation, state and action spaces.
     NOTE: all sub-environments will be reset automatically if there is not agent in the environment, except for those wrapped by `AutoResetParallelEnvWrapper`.
 
-    We use Tuple to construct the spaces of VectorParallelEnv, each element of the Tuple is a gym space from a sub-environment.
+    We use Tuple to construct the spaces of VectorParallelEnv, each element of the Tuple is a gym.spaces.Space from a sub-environment.
 
     `envs_have_agents` and `envs_have_agent` are used to record the sub-environment indices that have the agent, which is useful for constructing actions.
 
@@ -35,7 +35,7 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
 
     possible_agents: list[AgentID]
     agents: Tuple[List[AgentID]]
-    envs_have_agents: Dict[AgentID, Tuple[int]] = defaultdict(list)
+    _envs_have_agents: Dict[AgentID, Tuple[int]] = defaultdict(list)
 
     # Spaces for each agents and all sub-environment
     observation_spaces: dict[AgentID, gym.spaces.Tuple]
@@ -132,7 +132,14 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         """
         return the sub environment indices that have the agent
         """
-        return self.envs_have_agents[agent]
+        return tuple(self._envs_have_agents[agent])
+
+    @functools.lru_cache()
+    def envs_have_agents(self) -> Dict[AgentID, Tuple[int]]:
+        """
+        return the sub environment indices that have the agent
+        """
+        return {agent: tuple(self._envs_have_agents[agent]) for agent in self._envs_have_agents}
 
     def _merge_infos(self, env_infos: Tuple[Dict[AgentID, Dict]]) -> Dict[AgentID, Dict]:
         """
@@ -202,20 +209,3 @@ class BaseVectorParallelEnvWrapper(VectorParallelEnv[AgentID, ObsType, ActionTyp
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.env})"
-
-    def reset(
-        self, seed: int | None = None, options: Dict | None = None
-    ) -> Tuple[Dict[AgentID, Tuple[ObsType]], Dict[AgentID, Tuple[dict]]]:
-        return self.env.reset(seed, options)
-
-    def step(self, actions: Tuple[Dict[AgentID, ActionType]] | Tuple) -> Tuple[
-        Dict[AgentID, Tuple[ObsType]],
-        Dict[AgentID, Tuple[float]],
-        Dict[AgentID, Tuple[bool]],
-        Dict[AgentID, Tuple[bool]],
-        Dict[AgentID, Dict[Any, Tuple]],
-    ]:
-        return self.env.step(actions)
-
-    def state(self) -> Tuple:
-        return self.env.state()

@@ -1,6 +1,7 @@
 from typing import Dict
 
 import gymnasium as gym
+from gymnasium.spaces.tuple import Tuple
 from pettingzoo.utils.env import AgentID
 
 from co_mas.vector.vector_env import BaseVectorParallelEnvWrapper, VectorParallelEnv
@@ -20,6 +21,12 @@ class AgentStateVectorParallelEnvWrapper(BaseVectorParallelEnvWrapper):
     def single_state_space(self, agent: AgentID) -> gym.Space:
         return self.single_state_spaces[agent]
 
+    def state(self) -> Dict[AgentID, gym.spaces.Tuple]:
+        """
+        Return the state of all sub environments.
+        """
+        raise NotImplementedError
+
 
 class SyncAgentStateVectorParallelEnvWrapper(AgentStateVectorParallelEnvWrapper):
     """
@@ -36,3 +43,12 @@ class SyncAgentStateVectorParallelEnvWrapper(AgentStateVectorParallelEnvWrapper)
             agent: gym.spaces.Tuple([self.env.envs[0].state_space(agent)] * self.num_envs)
             for agent in self.possible_agents
         }
+
+    def state(self) -> Dict[AgentID, Tuple]:
+        state = {agent: [] for agent in self.possible_agents}
+        for env in self.env.envs:
+            for agent in self.agents:
+                state[agent].append(env.state(agent))
+        self._construct_batch_result_in_place(state)
+
+        return state
