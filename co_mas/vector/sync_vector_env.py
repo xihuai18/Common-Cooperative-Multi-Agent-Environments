@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from copy import deepcopy
 from typing import Callable, Dict, Iterator, Sequence, Tuple
 
 import gymnasium as gym
@@ -45,7 +46,8 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
         self.agents = tuple(env.agents for env in self.envs)
         self.agents_old = tuple([] for _ in self.envs)
-        self.envs_have_agents = defaultdict(list)
+        self._envs_have_agents = defaultdict(list)
+        self._envs_have_agents_old = None
         self._update_envs_have_agents()
 
         self._mark_envs()
@@ -92,9 +94,9 @@ class SyncVectorParallelEnv(VectorParallelEnv):
             add_agents = _agents_in_env - _agents_in_env_old
             remove_agents = _agents_in_env_old - _agents_in_env
             for agent in add_agents:
-                self.envs_have_agents[agent].append(env_id)
+                self._envs_have_agents[agent].append(env_id)
             for agent in remove_agents:
-                self.envs_have_agents[agent].remove(env_id)
+                self._envs_have_agents[agent].remove(env_id)
 
     def reset(
         self, seed: int | list[int] | None = None, options: dict | None = None
@@ -121,8 +123,9 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
         self.agents = tuple(env.agents for env in self.envs)
         self.agents_old = tuple([] for _ in self.envs)
-        self.envs_have_agents = defaultdict(list)
+        self._envs_have_agents = defaultdict(list)
         self._update_envs_have_agents()
+        self._envs_have_agents_old = deepcopy(self._envs_have_agents)
 
         self._autoreset_envs = np.zeros(shape=(self.num_envs,), dtype=bool)
 
@@ -143,9 +146,9 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
         env_actions = [{} for _ in self.envs]
         for agent, agent_actions in actions.items():
-            for i, env_id in enumerate(self.envs_have_agents[agent]):
+            for i, env_id in enumerate(self._envs_have_agents_old[agent]):
                 env_actions[env_id][agent] = agent_actions[i]
-        for env_id, env, env_acts in enumerate(zip(self.envs, env_actions)):
+        for env_id, (env, env_acts) in enumerate(zip(self.envs, env_actions)):
             if self._autoreset_envs[env_id]:
                 obs, info = env.reset()
                 for agent in env.agents:
@@ -155,8 +158,9 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                     truncation[agent].append(False)
                 env_infos.append(info)
             else:
+                env_agents = env.agents
                 obs, rew, term, trunc, info = env.step(env_acts)
-                for agent in env.agents:
+                for agent in env_agents:
                     observation[agent].append(obs[agent])
                     reward[agent].append(rew[agent])
                     termination[agent].append(term[agent])
@@ -174,6 +178,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
         self.agents_old = self.agents[:]
         self.agents = tuple(env.agents for env in self.envs)
+        self._envs_have_agents_old = deepcopy(self._envs_have_agents)
         self._update_envs_have_agents()
 
         return observation, reward, termination, truncation, info

@@ -103,38 +103,41 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         """
         raise NotImplementedError
 
+    @functools.lru_cache()
     def single_observation_space(self, agent: AgentID) -> gym.Space:
         """
         Return the observation space for the given agent in a sub-environment.
         """
         return self.single_observation_spaces[agent]
 
+    @functools.lru_cache()
     def observation_space(self, agent: AgentID) -> gym.Space:
         """
         Return the observation space for the given agent.
         """
         return self.observation_spaces[agent]
 
+    @functools.lru_cache()
     def single_action_space(self, agent: AgentID) -> gym.Space:
         """
         Return the action space for the given agent in a sub-environment.
         """
         return self.single_action_spaces[agent]
 
+    @functools.lru_cache()
     def action_space(self, agent: AgentID) -> gym.Space:
         """
         Return the action space for the given agent.
         """
         return self.action_spaces[agent]
 
-    @functools.lru_cache()
     def envs_have_agent(self, agent: AgentID) -> Tuple[int]:
         """
         return the sub environment indices that have the agent
         """
         return tuple(self._envs_have_agents[agent])
 
-    @functools.lru_cache()
+    @property
     def envs_have_agents(self) -> Dict[AgentID, Tuple[int]]:
         """
         return the sub environment indices that have the agent

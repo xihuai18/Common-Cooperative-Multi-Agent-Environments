@@ -1,3 +1,4 @@
+import functools
 from typing import Dict
 
 import gymnasium as gym
@@ -23,6 +24,7 @@ class AgentStateParallelEnvWrapper(pettingzoo.utils.BaseParallelWrapper):
         }
         self.type_only = type_only
 
+    @functools.lru_cache()
     def state_space(self, agent: AgentID) -> gym.Space:
         return self.state_spaces[agent]
 

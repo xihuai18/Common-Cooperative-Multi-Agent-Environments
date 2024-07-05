@@ -43,7 +43,10 @@ def parallel_api_test(par_env: ParallelEnv, num_cycles=1000):
         live_agents = set(par_env.agents[:])
         has_finished = set()
         for _ in range(num_cycles):
-            actions = {agent: sample_action(par_env, obs, agent, info) for agent in par_env.agents}
+            actions = {
+                agent: sample_action(agent, obs[agent], info[agent], par_env.action_space(agent))
+                for agent in par_env.agents
+            }
             obs, rew, terminated, truncated, info = par_env.step(actions)
             for agent in par_env.agents:
                 assert agent not in has_finished, "agent cannot be revived once dead"
