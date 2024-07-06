@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import functools
 from collections import defaultdict
-from typing import Any, Dict, Generic, List, Tuple
+from typing import Any, Dict, Generic, List, Tuple, TypeVar
 
 import gymnasium as gym
 from pettingzoo.utils.env import ActionType, AgentID, ObsType
 
-__all__ = ["VectorParallelEnv", "BaseVectorParallelEnvWrapper"]
+EnvID = TypeVar("EnvID")
+
+__all__ = ["VectorParallelEnv", "BaseVectorParallelEnvWrapper", "EnvID"]
 
 
-class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
+class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
     """
     High performance vectorized multi-agent environment for PettingZoo Parallel environments.
     All sub-environments must have the same observation, state and action spaces.
@@ -27,26 +29,28 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
     `envs_have_agents` and `envs_have_agent` are used to record the sub-environment indices that have the agent, which is useful for constructing actions.
 
     # TODO: doc for input and output
+    # TODO: doc the reset, termination and truncation
     """
 
     metadata: dict[str, Any] = {}
 
     num_envs: int
 
-    possible_agents: list[AgentID]
-    agents: Tuple[List[AgentID]]
-    _envs_have_agents: Dict[AgentID, Tuple[int]] = defaultdict(list)
+    possible_agents: Tuple[AgentID]
+    agents: Dict[EnvID, Tuple[AgentID]]
+    env_ids: Tuple[EnvID]
+    _envs_have_agents: Dict[AgentID, List[EnvID]] = defaultdict(list)
 
     # Spaces for each agents and all sub-environment
-    observation_spaces: dict[AgentID, gym.spaces.Tuple]
-    action_spaces: dict[AgentID, gym.spaces.Tuple]
+    observation_spaces: dict[AgentID, gym.spaces.Dict]
+    action_spaces: dict[AgentID, gym.spaces.Dict]
 
     # Spaces for each agents and one sub-environment
     single_observation_spaces: dict[AgentID, gym.spaces.Space]
     single_action_spaces: dict[AgentID, gym.spaces.Space]
 
     # if auto_need_autoreset_envs[i] == True, manually reset it, otherwise env `i` will be reset automatically.
-    _need_autoreset_envs: List[bool]
+    _need_autoreset_envs: Dict[EnvID, bool]
 
     closed: bool = False
 
@@ -54,18 +58,18 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         self,
         seed: int | None = None,
         options: dict | None = None,
-    ) -> Tuple[Dict[AgentID, Tuple[ObsType]], Dict[AgentID, Dict]]:
+    ) -> Tuple[Dict[AgentID, Dict[EnvID, ObsType]], Dict[AgentID, Dict[EnvID, Dict]]]:
         """
         Reset all parallel environments and return a batch of initial observations and info.
         """
         raise NotImplementedError
 
-    def step(self, actions: Dict[AgentID, Tuple[ActionType]]) -> Tuple[
-        Dict[AgentID, Tuple[ObsType]],
-        Dict[AgentID, Tuple[float]],
-        Dict[AgentID, Tuple[bool]],
-        Dict[AgentID, Tuple[bool]],
-        Dict[AgentID, Dict],
+    def step(self, actions: Dict[AgentID, Dict[EnvID, ActionType]]) -> Tuple[
+        Dict[AgentID, Dict[EnvID, ObsType]],
+        Dict[AgentID, Dict[EnvID, float]],
+        Dict[AgentID, Dict[EnvID, bool]],
+        Dict[AgentID, Dict[EnvID, bool]],
+        Dict[AgentID, Dict[EnvID, Dict]],
     ]:
         """
         Step all parallel environments with the given actions and return a batch of results.
@@ -97,7 +101,7 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
 
         return f"VectorParallelEnv(num_envs={self.num_envs})"
 
-    def state(self) -> Tuple:
+    def state(self) -> Dict[EnvID, ObsType]:
         """
         Return the state of all parallel environments.
         """
@@ -131,61 +135,55 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         """
         return self.action_spaces[agent]
 
-    def envs_have_agent(self, agent: AgentID) -> Tuple[int]:
+    def envs_have_agent(self, agent: AgentID) -> Tuple[EnvID]:
         """
         return the sub environment indices that have the agent
         """
         return tuple(self._envs_have_agents[agent])
 
     @property
-    def envs_have_agents(self) -> Dict[AgentID, Tuple[int]]:
+    def envs_have_agents(self) -> Dict[AgentID, Tuple[EnvID]]:
         """
         return the sub environment indices that have the agent
         """
-        return {agent: tuple(self._envs_have_agents[agent]) for agent in self._envs_have_agents}
+        return {agent: tuple(self._envs_have_agents[agent]) for agent in self._envs_have_agents.keys()}
 
-    def _merge_infos(self, env_infos: Tuple[Dict[AgentID, Dict]]) -> Dict[AgentID, Dict]:
+    def add_info_in_place(
+        self, vector_info: Dict[AgentID, Dict[Any, Dict[EnvID, Any]]], env_info: Dict[AgentID, Dict], env_id: EnvID
+    ):
         """
-        Merge env_infos into vector_info.
+        add an env_info for env_id into the vector_info.
         """
-        vector_info = {}
 
-        def _merge(_infos: Tuple[Dict], _key: Any) -> Dict:
+        def _merge(_vector_info: Dict[Any, Dict[EnvID, Any]], _env_info: Dict):
             """
-            Merge values in _env_infos for _key into a tuple.
+            Merge values in _env_info into _vector_info.
             """
-            _merged_info = {}
-            _dummy_info = _infos[0]
-            if isinstance(_dummy_info[_key], dict):
-                for _k in _dummy_info[_key].keys():
-                    _merged_info[_k] = _merge(_infos=tuple(_info[_key] for _info in _infos), _key=_k)
-            else:
-                _merged_info = tuple([_info[_key] for _info in _infos])
-            return _merged_info
+            for k, v in _env_info.items():
+                if isinstance(v, dict):
+                    _merge(_vector_info[k], v)
+                else:
+                    if k not in _vector_info:
+                        _vector_info[k] = {env_id: v}
+                    else:
+                        _vector_info[k][env_id] = v
 
         for agent in self.possible_agents:
-            infos_for_agent = tuple(_env_info[agent] for _env_info in env_infos if agent in _env_info)
-            if len(infos_for_agent) <= 0:
-                continue
-            vector_info[agent] = {}
-            dummy_info = infos_for_agent[0]
-            for key in dummy_info.keys():
-                vector_info[agent][key] = _merge(infos_for_agent, _key=key)
+            if agent in env_info:
+                _merge(vector_info[agent], env_info[agent])
 
-        return vector_info
-
-    def _construct_batch_result_in_place(self, result: Dict[AgentID, List]) -> Dict[AgentID, Tuple]:
+    def construct_batch_result_in_place(
+        self, result: Dict[AgentID, Dict[EnvID, Any]]
+    ) -> Dict[AgentID, Dict[EnvID, Any]]:
         """
-        remove empty agent results and convert them to tuple in-place.
+        remove empty agent results.
         """
         for agent in self.possible_agents:
             if len(result[agent]) <= 0:
                 result.pop(agent)
-            else:
-                result[agent] = tuple(result[agent])
 
     @property
-    def num_agents(self) -> Tuple[int]:
+    def num_agents(self) -> Dict[EnvID, Tuple[int]]:
         """return the number of agents in each sub-environment."""
         raise NotImplementedError
 
@@ -195,7 +193,7 @@ class VectorParallelEnv(Generic[AgentID, ObsType, ActionType]):
         return len(self.possible_agents)
 
 
-class BaseVectorParallelEnvWrapper(VectorParallelEnv[AgentID, ObsType, ActionType]):
+class BaseVectorParallelEnvWrapper(Generic[EnvID, AgentID, ObsType, ActionType]):
     """
     Base wrapper for VectorParallelEnv.
     """

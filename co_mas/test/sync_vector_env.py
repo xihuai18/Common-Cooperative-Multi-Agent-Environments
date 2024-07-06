@@ -1,4 +1,4 @@
-from pprint import pformat, pprint
+from pprint import pformat
 
 from loguru import logger
 from tqdm import tqdm
@@ -7,12 +7,13 @@ from co_mas.test.utils import vector_sample_sample
 from co_mas.vector import SyncVectorParallelEnv
 
 
-def check_dict(info_dict, num):
+def check_dict(info_dict, env_ids):
     for k, v in info_dict.items():
         if isinstance(v, dict):
-            check_dict(v, num)
-        else:
-            assert len(v) == num, f"Dictionary {k} should have length of 1"
+            if all(not isinstance(_v, dict) for _v in v.values()):
+                assert set(v.keys()).issuperset(env_ids), f"Dict keys {k}: {v} should contain {env_ids}"
+            else:
+                check_dict(v, env_ids)
 
 
 def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
@@ -24,47 +25,49 @@ def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
     # 1. where the sub-environments reset correctly
 
     obs, info = sync_vec_env.reset()
-    envs_have_agents = sync_vec_env.envs_have_agents
 
+    logger.debug("agents:\n" + pformat(sync_vec_env.agents))
+    logger.debug("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
+    logger.debug("info:\n" + pformat(info))
     for _ in tqdm(range(num_cycles)):
         action = {}
         for agent in sync_vec_env.possible_agents:
-            agent_envs = envs_have_agents[agent]
+            agent_envs = sync_vec_env.envs_have_agent(agent)
             if len(agent_envs) > 0:
                 action[agent] = vector_sample_sample(
                     agent, obs[agent], info[agent], sync_vec_env.action_space(agent), agent_envs
                 )
-        pprint(envs_have_agents)
-        pprint(info)
-        pprint(action)
-        envs_have_agents = sync_vec_env.envs_have_agents
+        logger.debug("action:\n" + pformat(action))
 
+        envs_have_agents = sync_vec_env.envs_have_agents
         obs, rew, terminated, truncated, info = sync_vec_env.step(action)
-        pprint(sync_vec_env.agents)
-        pprint(envs_have_agents)
-        pprint(terminated)
-        pprint(truncated)
+
+        logger.debug("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
+        logger.debug("info:\n" + pformat(info))
+        logger.debug("agents:\n" + pformat(sync_vec_env.agents))
+        logger.debug("terminated:\n" + pformat(terminated))
+        logger.debug("truncated:\n" + pformat(truncated))
 
         agents = sync_vec_env.agents
-        should_be_reset = [len(_agents) == 0 for _agents in agents]
-        print(f"{pformat(should_be_reset)}==?\n{pformat(sync_vec_env._autoreset_envs)}")
+        should_be_reset = {env_id: len(_agents) == 0 for env_id, _agents in agents.items()}
+        logger.debug(f"{pformat(should_be_reset)}\n==?\n{pformat(sync_vec_env._autoreset_envs)}")
         assert all(
-            sync_vec_env._autoreset_envs[i] == should_be_reset[i] for i in range(sync_vec_env.num_envs)
+            sync_vec_env._autoreset_envs[env_id] == should_be_reset[env_id] for env_id in sync_vec_env.env_ids
         ), "Autoreset environments should be reset"
         for agent in sync_vec_env.possible_agents:
             envs_have_agent = envs_have_agents[agent]
-            assert len(obs.get(agent, [])) == len(
+            assert set(obs.get(agent, {}).keys()).issuperset(
                 envs_have_agent
-            ), "Observations should be the same length as envs_have_agent"
-            assert len(rew.get(agent, [])) == len(
+            ), f"Observations should contain {envs_have_agent}"
+            assert set(rew.get(agent, {}).keys()).issuperset(
                 envs_have_agent
-            ), "Rewards should be the same length as envs_have_agent"
-            assert len(terminated.get(agent, [])) == len(
+            ), f"Rewards should contain {envs_have_agent}"
+            assert set(terminated.get(agent, {}).keys()).issuperset(
                 envs_have_agent
-            ), "Terminations should be the same length as envs_have_agent"
-            assert len(truncated.get(agent, [])) == len(
+            ), f"Terminations should contain {envs_have_agent}"
+            assert set(truncated.get(agent, {}).keys()).issuperset(
                 envs_have_agent
-            ), "Truncations should be the same length as envs_have_agent"
-            check_dict(info.get(agent, {}), len(envs_have_agent))
+            ), f"Truncations should contain {envs_have_agent}"
+            check_dict(info.get(agent, {}), envs_have_agent)
 
     logger.success("SyncVectorParallelEnv Test Passed!")

@@ -1,10 +1,13 @@
 from typing import Dict
 
 import gymnasium as gym
-from gymnasium.spaces.tuple import Tuple
-from pettingzoo.utils.env import AgentID
+from pettingzoo.utils.env import AgentID, ObsType
 
-from co_mas.vector.vector_env import BaseVectorParallelEnvWrapper, VectorParallelEnv
+from co_mas.vector.vector_env import (
+    BaseVectorParallelEnvWrapper,
+    EnvID,
+    VectorParallelEnv,
+)
 
 
 class AgentStateVectorParallelEnvWrapper(BaseVectorParallelEnvWrapper):
@@ -13,12 +16,18 @@ class AgentStateVectorParallelEnvWrapper(BaseVectorParallelEnvWrapper):
     """
 
     single_state_spaces: Dict[AgentID, gym.Space]
-    state_spaces: Dict[AgentID, gym.Space]
+    state_spaces: Dict[AgentID, gym.spaces.Dict]
 
-    def state_space(self, agent: AgentID) -> gym.spaces.Tuple:
+    def state_space(self, agent: AgentID) -> gym.spaces.Dict:
+        """
+        Return the state space for the given agent in each sub-environments.
+        """
         return self.state_spaces[agent]
 
     def single_state_space(self, agent: AgentID) -> gym.Space:
+        """
+        Return the state space for the given agent in a sub-environment.
+        """
         return self.single_state_spaces[agent]
 
     def state(self) -> Dict[AgentID, gym.spaces.Tuple]:
@@ -40,15 +49,17 @@ class SyncAgentStateVectorParallelEnvWrapper(AgentStateVectorParallelEnvWrapper)
         super().__init__(env)
         self.single_state_spaces = self.env.envs[0].state_spaces
         self.state_spaces = {
-            agent: gym.spaces.Tuple([self.env.envs[0].state_space(agent)] * self.num_envs)
+            agent: gym.spaces.Dict({env_id: self.single_action_spaces[agent] for env_id in self.env.env_ids})
             for agent in self.possible_agents
         }
 
-    def state(self) -> Dict[AgentID, Tuple]:
-        state = {agent: [] for agent in self.possible_agents}
-        for env in self.env.envs:
-            for agent in self.agents:
-                state[agent].append(env.state(agent))
-        self._construct_batch_result_in_place(state)
+    def state(self) -> Dict[AgentID, Dict[EnvID, ObsType]]:
+        state = {agent: {} for agent in self.possible_agents}
+        for env_id, env in zip(self.env.env_ids, self.env.envs):
+            env_state = env.state()
+            for agent in self.possible_agents:
+                if agent in env_state:
+                    state[agent][env_id] = env_state[agent]
+        self.env.construct_batch_result_in_place(state)
 
         return state

@@ -5,11 +5,9 @@ from copy import deepcopy
 from typing import Callable, Dict, Iterator, Sequence, Tuple
 
 import gymnasium as gym
-import numpy as np
-from pettingzoo.utils.env import ActionType, AgentID, ObsType
+from pettingzoo.utils.env import ActionType, AgentID, ObsType, ParallelEnv
 
-from co_mas.env import ParallelEnv
-from co_mas.vector.vector_env import VectorParallelEnv
+from co_mas.vector.vector_env import EnvID, VectorParallelEnv
 from co_mas.wrappers import AutoResetParallelEnvWrapper
 
 
@@ -24,35 +22,36 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         # Initialise all sub-environments
         self.envs = [env_fn() for env_fn in env_fns]
         self.num_envs = len(self.envs)
+        self.env_ids = tuple(f"env_{env_id}" for env_id in range(self.num_envs))
+        self._map_env_id_to_env = dict(zip(self.env_ids, self.envs))
 
         self.metadata = self.envs[0].metadata
         self.single_observation_spaces = self.envs[0].observation_spaces
         self.single_action_spaces = self.envs[0].action_spaces
-        self.possible_agents = self.envs[0].possible_agents
+        self.possible_agents = tuple(self.envs[0].possible_agents)
         self._check_spaces()
 
         self.observation_spaces = {
-            agent: gym.spaces.Tuple([self.envs[0].observation_space(agent)] * self.num_envs)
+            agent: gym.spaces.Dict({env_id: self.single_observation_spaces[agent] for env_id in self.env_ids})
             for agent in self.possible_agents
         }
         self.action_spaces = {
-            agent: gym.spaces.Tuple([self.envs[0].action_space(agent)] * self.num_envs)
+            agent: gym.spaces.Dict({env_id: self.single_action_spaces[agent] for env_id in self.env_ids})
             for agent in self.possible_agents
         }
         if hasattr(self.envs[0], "state_space"):
-            if not hasattr(self, "state_spaces"):
+            if not hasattr(self.envs[0], "state_spaces"):
                 self.single_state_space = self.envs[0].state_space
-                self.state_space = tuple(env.state_space for env in self.envs)
+                self.state_space = {env_id: env.state_space for env_id, env in zip(self.env_ids, self.envs)}
 
-        self.agents = tuple(env.agents for env in self.envs)
-        self.agents_old = tuple([] for _ in self.envs)
+        self.agents = {env_id: tuple(env.agents[:]) for env_id, env in zip(self.env_ids, self.envs)}
+        self.agents_old = {env_id: [] for env_id in self.env_ids}
         self._envs_have_agents = defaultdict(list)
-        self._envs_have_agents_old = None
         self._update_envs_have_agents()
 
         self._mark_envs()
         # record which environments will autoreset
-        self._autoreset_envs = np.zeros(shape=(self.num_envs,), dtype=bool)
+        self._autoreset_envs = {env_id: False for env_id in self.env_ids}
 
     def __repr__(self) -> str:
         """Returns a string representation of the vector environment."""
@@ -73,6 +72,11 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                     f"Some environments have an action space different from `{self.single_action_spaces}`. "
                     "In order to batch actions, the action spaces from all environments must be equal."
                 )
+            if hasattr(self, "single_state_space") and not (env.state_space == self.single_state_space):
+                raise RuntimeError(
+                    f"Some environments have a state space `{env.state_space}` different from `{self.single_state_space}`. "
+                    "In order to batch states, the state spaces from all environments must be equal."
+                )
 
         return True
 
@@ -85,12 +89,12 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                 env = env.env
             return True
 
-        self._need_autoreset_envs = [_mark_env(env) for env in self.envs]
+        self._need_autoreset_envs = {env_id: _mark_env(env) for env_id, env in zip(self.env_ids, self.envs)}
 
     def _update_envs_have_agents(self):
-        for env_id, (_agents_in_env, _agents_in_env_old) in enumerate(zip(self.agents, self.agents_old)):
-            _agents_in_env = set(_agents_in_env)
-            _agents_in_env_old = set(_agents_in_env_old)
+        for env_id in self.env_ids:
+            _agents_in_env = set(self.agents[env_id])
+            _agents_in_env_old = set(self.agents_old[env_id])
             add_agents = _agents_in_env - _agents_in_env_old
             remove_agents = _agents_in_env_old - _agents_in_env
             for agent in add_agents:
@@ -99,89 +103,92 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                 self._envs_have_agents[agent].remove(env_id)
 
     def reset(
-        self, seed: int | list[int] | None = None, options: dict | None = None
-    ) -> Tuple[Dict[AgentID, Tuple[ObsType]], Dict[AgentID, Dict]]:
+        self, seed: int | list[int] | Dict[EnvID, int] | None = None, options: dict | None = None
+    ) -> Tuple[Dict[AgentID, Dict[EnvID, ObsType]], Dict[AgentID, Dict[EnvID, Dict]]]:
         if seed is None:
-            seed = [None] * self.num_envs
+            seed = {env_id: None for env_id in self.env_ids}
         elif isinstance(seed, int):
-            seed = [seed + i for i in range(self.num_envs)]
+            seed = {env_id: seed for env_id in self.env_ids}
+        elif isinstance(seed, list):
+            seed = {env_id: s for env_id, s in zip(self.env_ids, seed)}
 
-        assert len(seed) == self.num_envs, "The number of seeds must match the number of environments."
+        assert set(seed.keys()) == set(
+            self.env_ids
+        ), "The key (env_id) of seeds must match the ids of sub-environments."
 
-        observation = {agent: [] for agent in self.possible_agents}
-        env_infos = []
+        observation = {agent: {} for agent in self.possible_agents}
+        vector_info = {agent: {} for agent in self.possible_agents}
 
-        for env, seed in zip(self.envs, seed):
-            obs, info = env.reset(seed=seed, options=options)
+        for env_id, _seed in seed.items():
+            env = self.sub_env(env_id)
+            obs, info = env.reset(seed=_seed, options=options)
             for agent in self.possible_agents:
                 if agent in obs:
-                    observation[agent].append(obs[agent])
-            env_infos.append(info)
-        info = self._merge_infos(env_infos)
+                    observation[agent][env_id] = obs[agent]
+            self.add_info_in_place(vector_info, info, env_id)
 
-        self._construct_batch_result_in_place(observation)
+        self.construct_batch_result_in_place(observation)
 
-        self.agents = tuple(env.agents for env in self.envs)
-        self.agents_old = tuple([] for _ in self.envs)
+        self.agents = {env_id: tuple(env.agents[:]) for env_id, env in zip(self.env_ids, self.envs)}
+        self.agents_old = {env_id: [] for env_id in self.env_ids}
         self._envs_have_agents = defaultdict(list)
         self._update_envs_have_agents()
-        self._envs_have_agents_old = deepcopy(self._envs_have_agents)
 
-        self._autoreset_envs = np.zeros(shape=(self.num_envs,), dtype=bool)
+        self._autoreset_envs = {env_id: False for env_id in self.env_ids}
 
-        return observation, info
+        return observation, vector_info
 
-    def step(self, actions: Dict[AgentID, Tuple[ActionType]]) -> Tuple[
-        Dict[AgentID, Tuple[ObsType]],
-        Dict[AgentID, Tuple[float]],
-        Dict[AgentID, Tuple[bool]],
-        Dict[AgentID, Tuple[bool]],
-        Dict[AgentID, Dict],
+    def step(self, actions: Dict[AgentID, Dict[EnvID, ActionType]]) -> Tuple[
+        Dict[AgentID, Dict[EnvID, ObsType]],
+        Dict[AgentID, Dict[EnvID, float]],
+        Dict[AgentID, Dict[EnvID, bool]],
+        Dict[AgentID, Dict[EnvID, bool]],
+        Dict[AgentID, Dict[EnvID, Dict]],
     ]:
-        observation = {agent: [] for agent in self.possible_agents}
-        reward = {agent: [] for agent in self.possible_agents}
-        termination = {agent: [] for agent in self.possible_agents}
-        truncation = {agent: [] for agent in self.possible_agents}
-        env_infos = []
+        observation = {agent: {} for agent in self.possible_agents}
+        reward = {agent: {} for agent in self.possible_agents}
+        termination = {agent: {} for agent in self.possible_agents}
+        truncation = {agent: {} for agent in self.possible_agents}
+        vector_info = {agent: {} for agent in self.possible_agents}
 
-        env_actions = [{} for _ in self.envs]
+        env_actions = {env_id: {} for env_id in self.env_ids}
         for agent, agent_actions in actions.items():
-            for i, env_id in enumerate(self._envs_have_agents_old[agent]):
-                env_actions[env_id][agent] = agent_actions[i]
-        for env_id, (env, env_acts) in enumerate(zip(self.envs, env_actions)):
+            for env_id in self._envs_have_agents[agent]:
+                env_actions[env_id][agent] = agent_actions[env_id]
+        for env_id, env_acts in env_actions.items():
+            env = self.sub_env(env_id)
             if self._autoreset_envs[env_id]:
                 obs, info = env.reset()
                 for agent in env.agents:
-                    observation[agent].append(obs[agent])
-                    reward[agent].append(0)
-                    termination[agent].append(False)
-                    truncation[agent].append(False)
-                env_infos.append(info)
+                    observation[agent][env_id] = obs[agent]
+                    reward[agent][env_id] = 0
+                    termination[agent][env_id] = False
+                    truncation[agent][env_id] = False
             else:
                 env_agents = env.agents
                 obs, rew, term, trunc, info = env.step(env_acts)
                 for agent in env_agents:
-                    observation[agent].append(obs[agent])
-                    reward[agent].append(rew[agent])
-                    termination[agent].append(term[agent])
-                    truncation[agent].append(trunc[agent])
-                env_infos.append(info)
+                    observation[agent][env_id] = obs[agent]
+                    reward[agent][env_id] = rew[agent]
+                    termination[agent][env_id] = term[agent]
+                    truncation[agent][env_id] = trunc[agent]
+            self.add_info_in_place(vector_info, info, env_id)
 
-        self._construct_batch_result_in_place(observation)
-        self._construct_batch_result_in_place(reward)
-        self._construct_batch_result_in_place(termination)
-        self._construct_batch_result_in_place(truncation)
-        info = self._merge_infos(env_infos)
+        self.construct_batch_result_in_place(observation)
+        self.construct_batch_result_in_place(reward)
+        self.construct_batch_result_in_place(termination)
+        self.construct_batch_result_in_place(truncation)
 
-        self._autoreset_envs = np.array([len(env.agents) == 0 for env in self.envs], dtype=bool)
-        self._autoreset_envs = np.logical_and(self._autoreset_envs, self._need_autoreset_envs)
+        self._autoreset_envs = {
+            env_id: (len(env.agents) == 0) and self._need_autoreset_envs[env_id]
+            for env_id, env in zip(self.env_ids, self.envs)
+        }
 
-        self.agents_old = self.agents[:]
-        self.agents = tuple(env.agents for env in self.envs)
-        self._envs_have_agents_old = deepcopy(self._envs_have_agents)
+        self.agents_old = deepcopy(self.agents)
+        self.agents = {env_id: tuple(env.agents[:]) for env_id, env in zip(self.env_ids, self.envs)}
         self._update_envs_have_agents()
 
-        return observation, reward, termination, truncation, info
+        return observation, reward, termination, truncation, vector_info
 
     def close(self):
         if self.closed:
@@ -190,7 +197,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
             env.close()
         self.closed = True
 
-    def state(self) -> Tuple | Dict[AgentID, Tuple]:
+    def state(self) -> Dict[EnvID, ObsType]:
         if not hasattr(self, "state_space"):
             if hasattr(self.envs[0], "state_spaces"):
                 raise RuntimeError(
@@ -198,14 +205,23 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                 )
             else:
                 raise RuntimeError("Sub-environments do not have a `state` function.")
-        return tuple(env.state() for env in self.envs)
+        return {env_id: env.state() for env_id, env in zip(self.env_ids, self.envs)}
 
     @property
-    def num_agents(self) -> Tuple[int]:
-        return tuple(env.num_agents for env in self.envs)
+    def num_agents(self) -> Dict[EnvID, int]:
+        return {env_id: len(env.agents) for env_id, env in zip(self.env_ids, self.envs)}
+
+    def sub_env(self, env_id: EnvID) -> ParallelEnv:
+        """
+        Return the sub-environment with the given ``env_id``.
+        """
+        return self._map_env_id_to_env[env_id]
 
     def __getattr__(self, name: str) -> Tuple:
         """Returns an attribute with ``name``, unless ``name`` starts with an underscore."""
         if name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
-        return (getattr(env, name) for env in self.envs)
+        if hasattr(self, "envs") and all(hasattr(env, name) for env in self.envs):
+            return tuple(getattr(env, name) for env in self.envs)
+        else:
+            raise AttributeError(f"attribute '{name}' not found in sub-environments")
