@@ -25,6 +25,7 @@ def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
     # 1. where the sub-environments reset correctly
 
     obs, info = sync_vec_env.reset()
+    should_be_reset = {env_id: len(_agents) == 0 for env_id, _agents in sync_vec_env.agents.items()}
 
     logger.debug("agents:\n" + pformat(sync_vec_env.agents))
     logger.debug("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
@@ -40,6 +41,23 @@ def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
         logger.debug("action:\n" + pformat(action))
 
         envs_have_agents = sync_vec_env.envs_have_agents
+
+        try:
+            state = sync_vec_env.state()
+        except Exception as e:
+            logger.warning(e)
+        else:
+            if list(state.keys())[0] in sync_vec_env.env_ids:
+                assert set(state.keys()).issuperset(
+                    [env_id for env_id in should_be_reset if should_be_reset[env_id] is False]
+                ), "State should contain all running environments"
+            else:
+                for agent in sync_vec_env.possible_agents:
+                    envs_have_agent = envs_have_agents[agent]
+                    assert set(state.get(agent, {}).keys()).issuperset(
+                        envs_have_agent
+                    ), f"States should contain {envs_have_agent}"
+
         obs, rew, terminated, truncated, info = sync_vec_env.step(action)
 
         logger.debug("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
@@ -50,9 +68,9 @@ def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
 
         agents = sync_vec_env.agents
         should_be_reset = {env_id: len(_agents) == 0 for env_id, _agents in agents.items()}
-        logger.debug(f"{pformat(should_be_reset)}\n==?\n{pformat(sync_vec_env._autoreset_envs)}")
+        logger.debug(f"{pformat(should_be_reset)}\n==?\n{pformat(sync_vec_env.unwrapped._autoreset_envs)}")
         assert all(
-            sync_vec_env._autoreset_envs[env_id] == should_be_reset[env_id] for env_id in sync_vec_env.env_ids
+            sync_vec_env.unwrapped._autoreset_envs[env_id] == should_be_reset[env_id] for env_id in sync_vec_env.env_ids
         ), "Autoreset environments should be reset"
         for agent in sync_vec_env.possible_agents:
             envs_have_agent = envs_have_agents[agent]

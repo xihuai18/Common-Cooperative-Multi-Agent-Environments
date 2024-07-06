@@ -205,7 +205,9 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                 )
             else:
                 raise RuntimeError("Sub-environments do not have a `state` function.")
-        return {env_id: env.state() for env_id, env in zip(self.env_ids, self.envs)}
+        states = {env_id: env.state() for env_id, env in zip(self.env_ids, self.envs)}
+        states = {env_id: env_state for env_id, env_state in states.items() if len(env_state) > 0}
+        return states
 
     @property
     def num_agents(self) -> Dict[EnvID, int]:
@@ -221,7 +223,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         """Returns an attribute with ``name``, unless ``name`` starts with an underscore."""
         if name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
-        if hasattr(self, "envs") and all(hasattr(env, name) for env in self.envs):
+        if name != "envs" and all(hasattr(env, name) for env in self.envs):
             return tuple(getattr(env, name) for env in self.envs)
         else:
             raise AttributeError(f"attribute '{name}' not found in sub-environments")

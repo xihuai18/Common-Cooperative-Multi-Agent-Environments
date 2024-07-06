@@ -49,7 +49,7 @@ class SyncAgentStateVectorParallelEnvWrapper(AgentStateVectorParallelEnvWrapper)
         super().__init__(env)
         self.single_state_spaces = self.env.envs[0].state_spaces
         self.state_spaces = {
-            agent: gym.spaces.Dict({env_id: self.single_action_spaces[agent] for env_id in self.env.env_ids})
+            agent: gym.spaces.Dict({env_id: self.single_state_spaces[agent] for env_id in self.env.env_ids})
             for agent in self.possible_agents
         }
 
