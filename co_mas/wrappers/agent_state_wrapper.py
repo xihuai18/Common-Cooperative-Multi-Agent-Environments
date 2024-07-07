@@ -19,9 +19,12 @@ class AgentStateParallelEnvWrapper(pettingzoo.utils.BaseParallelWrapper):
             env, "state_spaces"
         ), "AgentStateWrapper requires the environment to not have `state_spaces` attribute"
         super().__init__(env)
-        self.state_spaces = {
-            agent: agent_indicator.change_space(self.env.state_space, len(self.env.agents)) for agent in self.env.agents
-        }
+        self.state_spaces = gym.spaces.Dict(
+            {
+                agent: agent_indicator.change_space(self.env.state_space, len(self.env.agents))
+                for agent in self.env.agents
+            }
+        )
         self.type_only = type_only
 
     @functools.lru_cache()

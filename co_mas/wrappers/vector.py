@@ -50,10 +50,12 @@ class SyncAgentStateVectorParallelEnvWrapper(AgentStateVectorParallelEnvWrapper)
         )
         super().__init__(env)
         self.single_state_spaces = self.env.envs[0].state_spaces
-        self.state_spaces = {
-            agent: gym.spaces.Dict({env_id: self.single_state_spaces[agent] for env_id in self.env.env_ids})
-            for agent in self.possible_agents
-        }
+        self.state_spaces = gym.spaces.Dict(
+            {
+                agent: gym.spaces.Dict({env_id: self.single_state_spaces[agent] for env_id in self.env.env_ids})
+                for agent in self.possible_agents
+            }
+        )
 
     def state(self) -> Dict[AgentID, Dict[EnvID, ObsType]]:
         state = {agent: {} for agent in self.possible_agents}

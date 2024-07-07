@@ -45,12 +45,12 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
     _envs_have_agents: Dict[AgentID, List[EnvID]] = defaultdict(list)
 
     # Spaces for each agents and all sub-environment
-    observation_spaces: dict[AgentID, gym.spaces.Dict]
-    action_spaces: dict[AgentID, gym.spaces.Dict]
+    observation_spaces: Dict[AgentID, gym.spaces.Dict]
+    action_spaces: Dict[AgentID, gym.spaces.Dict]
 
     # Spaces for each agents and one sub-environment
-    single_observation_spaces: dict[AgentID, gym.spaces.Space]
-    single_action_spaces: dict[AgentID, gym.spaces.Space]
+    single_observation_spaces: Dict[AgentID, gym.spaces.Space]
+    single_action_spaces: Dict[AgentID, gym.spaces.Space]
 
     # if auto_need_autoreset_envs[i] == True, manually reset it, otherwise env `i` will be reset automatically.
     _need_autoreset_envs: Dict[EnvID, bool]

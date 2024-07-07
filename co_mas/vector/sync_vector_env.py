@@ -162,18 +162,24 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self.possible_agents = tuple(self.envs[0].possible_agents)
         self._check_spaces()
 
-        self.observation_spaces = {
-            agent: gym.spaces.Dict({env_id: self.single_observation_spaces[agent] for env_id in self.env_ids})
-            for agent in self.possible_agents
-        }
-        self.action_spaces = {
-            agent: gym.spaces.Dict({env_id: self.single_action_spaces[agent] for env_id in self.env_ids})
-            for agent in self.possible_agents
-        }
+        self.observation_spaces = gym.spaces.Dict(
+            {
+                agent: gym.spaces.Dict({env_id: self.single_observation_spaces[agent] for env_id in self.env_ids})
+                for agent in self.possible_agents
+            }
+        )
+        self.action_spaces = gym.spaces.Dict(
+            {
+                agent: gym.spaces.Dict({env_id: self.single_action_spaces[agent] for env_id in self.env_ids})
+                for agent in self.possible_agents
+            }
+        )
         if hasattr(self.envs[0], "state_space"):
             if not hasattr(self.envs[0], "state_spaces"):
                 self.single_state_space = self.envs[0].state_space
-                self.state_space = {env_id: env.state_space for env_id, env in zip(self.env_ids, self.envs)}
+                self.state_space = gym.spaces.Dict(
+                    {env_id: env.state_space for env_id, env in zip(self.env_ids, self.envs)}
+                )
 
         self.agents = {env_id: tuple(env.agents[:]) for env_id, env in zip(self.env_ids, self.envs)}
         self.agents_old = {env_id: [] for env_id in self.env_ids}
