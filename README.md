@@ -40,4 +40,7 @@ pip install .
 - [x] ParallelEnv: ParallelEnv with randomness control as in Gymnasium.
 
 ## VectorEnv Implementation
-- [ ] XXX
+
+### VectorEnv
+- [x] SyncVectorParallelEnv: VectorEnv with serial step and reset.
+- [ ] 

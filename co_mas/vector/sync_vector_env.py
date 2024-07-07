@@ -14,6 +14,137 @@ from co_mas.wrappers import AutoResetParallelEnvWrapper
 class SyncVectorParallelEnv(VectorParallelEnv):
     """
     Vectorized PettingZoo Parallel environment that serially runs multiple environments.
+
+    Example:
+        >>> from gfootball import gfootball_pettingzoo_v1
+        >>> from co_mas.vector import SyncVectorParallelEnv
+        >>> def env_gfootball_fn():
+        ...     return gfootball_pettingzoo_v1.parallel_env("academy_3_vs_1_with_keeper", number_of_left_players_agent_controls=2)
+        ...
+        >>> sync_vec_env = SyncVectorParallelEnv([env_gfootball_fn for _ in range(2)])
+        >>> sync_vec_env
+        SyncVectorParallelEnv(num_envs=2)
+        >>> obs, info = sync_vec_env.reset(seed=42)
+        >>> from pprint import pprint
+        >>> pprint(obs)
+        {'player_0': {
+            'env_0': array([-1.0110294 , -0.        ,  0.        , -0.        ,  0.        ,
+                            0.        ,  1.6176469 ,  0.        ,  1.71875   ,  0.20325357,
+                            1.71875   , -0.20325357,  2.0220587 ,  0.        ,  1.7693014 ,
+                            0.        ,  1.6310294 ,  0.        ,  0.6066176 , -0.        ,
+                            0.7077206 ,  0.20325357,  0.7077206 , -0.20325357,  0.        ,
+                            -0.        ,  0.        , -0.        ,  0.        , -0.        ,
+                            1.0110294 ,  0.        ,  0.75827205,  0.        , -0.        ,
+                            0.        , -0.        ,  0.        ,  0.62      , -0.        ,
+                            0.11061639, -0.        ,  0.        ,  0.00616395,  1.        ,
+                            0.        ,  0.        ,  1.        ,  0.        ,  0.        ,
+                            0.        ,  0.        ,  0.        ,  0.        ,  1.        ,
+                            0.        ,  0.        ,  0.        ], dtype=float32),
+            'env_1': array([-1.0110294 , -0.        ,  0.        , -0.        ,  0.        ,
+                            0.        ,  1.6176469 ,  0.        ,  1.71875   ,  0.20325357,
+                            1.71875   , -0.20325357,  2.0220587 ,  0.        ,  1.7693014 ,
+                            0.        ,  1.6310294 ,  0.        ,  0.6066176 , -0.        ,
+                            0.7077206 ,  0.20325357,  0.7077206 , -0.20325357,  0.        ,
+                            -0.        ,  0.        , -0.        ,  0.        , -0.        ,
+                            1.0110294 ,  0.        ,  0.75827205,  0.        , -0.        ,
+                            0.        , -0.        ,  0.        ,  0.62      , -0.        ,
+                            0.11061639, -0.        ,  0.        ,  0.00616395,  1.        ,
+                            0.        ,  0.        ,  1.        ,  0.        ,  0.        ,
+                            0.        ,  0.        ,  0.        ,  0.        ,  1.        ,
+                            0.        ,  0.        ,  0.        ], dtype=float32)},
+        ...}
+        >>> pprint(info)
+        {'player_0': {'action_masks': {
+                        'env_0': array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0]),
+                        'env_1': array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0])}},
+        ...}
+        >>> state = sync_vec_env.state()
+        >>> pprint(state)
+        {'env_0': {
+            'player_0': array([
+                -1.0110294 , -0.        ,  0.6066176 , -0.        ,  0.7077206 ,
+                0.20325357,  0.7077206 , -0.20325357,  0.        , -0.        ,
+                0.        , -0.        ,  0.        , -0.        ,  0.        ,
+                -0.        ,  1.0110294 ,  0.        ,  0.75827205,  0.        ,
+                -0.        ,  0.        , -0.        ,  0.        ,  0.62      ,
+                -0.        ,  0.11061639, -0.        ,  0.        ,  0.00616395,
+                1.        ,  0.        ,  0.        ,  1.        ,  0.        ,
+                0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+                1.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+                0.        ,  1.        ,  0.        ,  1.        ,  0.        ],
+                dtype=float32),
+            'player_1': array([
+                -1.0110294 , -0.        ,  0.6066176 , -0.        ,  0.7077206 ,
+                0.20325357,  0.7077206 , -0.20325357,  0.        , -0.        ,
+                0.        , -0.        ,  0.        , -0.        ,  0.        ,
+                -0.        ,  1.0110294 ,  0.        ,  0.75827205,  0.        ,
+                -0.        ,  0.        , -0.        ,  0.        ,  0.62      ,
+                -0.        ,  0.11061639, -0.        ,  0.        ,  0.00616395,
+                1.        ,  0.        ,  0.        ,  1.        ,  0.        ,
+                0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+                1.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+                0.        ,  1.        ,  0.        ,  0.        ,  1.        ],
+            dtype=float32)},
+        ...}
+        >>> from co_mas.test.utils import vector_sample_sample
+        >>> action = {}
+        >>> for agent in sync_vec_env.possible_agents:
+        ...     agent_envs = sync_vec_env.envs_have_agent(agent)
+        ...     if len(agent_envs) > 0:
+        ...         action[agent] = vector_sample_sample(
+        ...             agent, obs[agent], info[agent], sync_vec_env.action_space(agent), agent_envs
+        ...         )
+        ...
+        >>> pprint(action)
+        {'player_0': {'env_0': 6, 'env_1': 14}, 'player_1': {'env_0': 10, 'env_1': 7}}
+        >>> pprint(rewards)
+        {'player_0': {'env_0': np.float32(0.0), 'env_1': np.float32(0.0)},
+        'player_1': {'env_0': np.float32(0.0), 'env_1': np.float32(0.0)}}
+        >>> pprint(terminates)
+        {'player_0': {'env_0': False, 'env_1': False},
+        'player_1': {'env_0': False, 'env_1': False}}
+        >>> pprint(truncates)
+        {'player_0': {'env_0': False, 'env_1': False},
+        'player_1': {'env_0': False, 'env_1': False}}
+        >>> pprint(infos)
+        {'player_0': {'action_masks': {
+                        'env_0': array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0]),
+                        'env_1': array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0])},
+                    'score_reward': {'env_0': 0, 'env_1': 0}},
+         'player_1': {'action_masks': {
+                        'env_0': array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0]),
+                        'env_1': array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0])},
+                    'score_reward': {'env_0': 0, 'env_1': 0}}}
+        >>> from co_mas.wrappers.vector import SyncAgentStateVectorParallelEnvWrapper
+        >>> as_sync_vec_env= SyncAgentStateVectorParallelEnvWrapper(sync_vec_env)
+        >>> pprint(as_sync_vec_env.state())
+        {'player_0': {
+            'env_0': array([
+            -1.0110294 , -0.        ,  0.6066176 , -0.        ,  0.7077206 ,
+            0.20325357,  0.7077206 , -0.20325357,  0.        , -0.        ,
+            0.        , -0.        ,  0.        , -0.        ,  0.        ,
+            -0.        ,  1.0110294 ,  0.        ,  0.75827205,  0.        ,
+            -0.        ,  0.        , -0.        ,  0.        ,  0.62      ,
+            -0.        ,  0.11061639, -0.        ,  0.        ,  0.00616395,
+            1.        ,  0.        ,  0.        ,  1.        ,  0.        ,
+            0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            1.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            0.        ,  1.        ,  0.        ,  1.        ,  0.        ],
+            dtype=float32),
+            'env_1': array([
+            -1.0110294 , -0.        ,  0.6066176 , -0.        ,  0.7077206 ,
+            0.20325357,  0.7077206 , -0.20325357,  0.        , -0.        ,
+            0.        , -0.        ,  0.        , -0.        ,  0.        ,
+            -0.        ,  1.0110294 ,  0.        ,  0.75827205,  0.        ,
+            -0.        ,  0.        , -0.        ,  0.        ,  0.62      ,
+            -0.        ,  0.11061639, -0.        ,  0.        ,  0.00616395,
+            1.        ,  0.        ,  0.        ,  1.        ,  0.        ,
+            0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            1.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            0.        ,  1.        ,  0.        ,  1.        ,  0.        ],
+            dtype=float32)},
+        ...}
+        >>> sync_vec_env.close()
     """
 
     def __init__(self, env_fns: Iterator[Callable[[], ParallelEnv]] | Sequence[Callable[[], ParallelEnv]]):

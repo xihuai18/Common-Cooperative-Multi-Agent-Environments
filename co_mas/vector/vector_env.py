@@ -24,12 +24,15 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
     All sub-environments must have the same observation, state and action spaces.
     NOTE: all sub-environments will be reset automatically if there is not agent in the environment, except for those wrapped by `AutoResetParallelEnvWrapper`.
 
-    We use Tuple to construct the spaces of VectorParallelEnv, each element of the Tuple is a gym.spaces.Space from a sub-environment.
+    We use gymnasium.spaces.Dict to construct the spaces of VectorParallelEnv, each item pair of the Dict is an env_id and a gym.spaces.Space from a sub-environment.
 
     `envs_have_agents` and `envs_have_agent` are used to record the sub-environment indices that have the agent, which is useful for constructing actions.
 
-    # TODO: doc for input and output
-    # TODO: doc the reset, termination and truncation
+    For `reset` and `step` methods, `observations`, `rewards`, `terminations`, `truncations` and `infos` are all Dicts of Dicts, where the first Dict is the agent_id and the second Dict is the env_id.
+
+    For the `state` method, the return value is a Dict of state arrays, where the key is the env_id. If you want it to return agent specific states, you can use the provided `SyncAgentStateVectorParallelEnvWrapper` or `AsyncAgentStateVectorParallelEnvWrapper` wrappers.
+
+    We provide `SyncVectorParallelEnv` and `AsyncVectorParallelEnv` for serial and parallel environments, respectively. For detailed usage, please refer to the examples in the `tests` directory or the documentation of the corresponding classes.
     """
 
     metadata: dict[str, Any] = {}
