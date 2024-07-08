@@ -226,18 +226,8 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                 env = env.env
             return True
 
+        # if auto_need_autoreset_envs[i] == True, manually reset it, otherwise env `i` will be reset automatically.
         self._need_autoreset_envs = {env_id: _mark_env(env) for env_id, env in zip(self.env_ids, self.envs)}
-
-    def _update_envs_have_agents(self):
-        for env_id in self.env_ids:
-            _agents_in_env = set(self.agents[env_id])
-            _agents_in_env_old = set(self.agents_old[env_id])
-            add_agents = _agents_in_env - _agents_in_env_old
-            remove_agents = _agents_in_env_old - _agents_in_env
-            for agent in add_agents:
-                self._envs_have_agents[agent].append(env_id)
-            for agent in remove_agents:
-                self._envs_have_agents[agent].remove(env_id)
 
     def reset(
         self, seed: int | list[int] | Dict[EnvID, int] | None = None, options: dict | None = None

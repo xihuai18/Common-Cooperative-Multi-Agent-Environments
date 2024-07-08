@@ -45,7 +45,7 @@ pip install .
 - [x] SyncVectorParallelEnv: VectorEnv with serial step and reset.
 - [ ] AsyncVectorParallelEnv: VectorEnv with parallel step and reset.
 
-### VectorEnv Wrapper
+### VectorEnv Wrappers
 - [x] AgentStateVectorParallelEnvWrapper 
 - [x] SyncAgentStateVectorParallelEnvWrapper
 - [ ] AsyncAgentStateVectorParallelEnvWrapper

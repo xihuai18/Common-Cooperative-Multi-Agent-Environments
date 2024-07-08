@@ -41,6 +41,7 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
 
     possible_agents: Tuple[AgentID]
     agents: Dict[EnvID, Tuple[AgentID]]
+    agents_old: Dict[EnvID, Tuple[AgentID]]
     env_ids: Tuple[EnvID]
     _envs_have_agents: Dict[AgentID, List[EnvID]] = defaultdict(list)
 
@@ -51,9 +52,6 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
     # Spaces for each agents and one sub-environment
     single_observation_spaces: Dict[AgentID, gym.spaces.Space]
     single_action_spaces: Dict[AgentID, gym.spaces.Space]
-
-    # if auto_need_autoreset_envs[i] == True, manually reset it, otherwise env `i` will be reset automatically.
-    _need_autoreset_envs: Dict[EnvID, bool]
 
     closed: bool = False
 
@@ -194,6 +192,17 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
     def max_num_agents(self) -> int:
         """return the maximum number of agents in all sub-environments."""
         return len(self.possible_agents)
+
+    def _update_envs_have_agents(self):
+        for env_id in self.env_ids:
+            _agents_in_env = set(self.agents[env_id])
+            _agents_in_env_old = set(self.agents_old[env_id])
+            add_agents = _agents_in_env - _agents_in_env_old
+            remove_agents = _agents_in_env_old - _agents_in_env
+            for agent in add_agents:
+                self._envs_have_agents[agent].append(env_id)
+            for agent in remove_agents:
+                self._envs_have_agents[agent].remove(env_id)
 
 
 class BaseVectorParallelEnvWrapper(Generic[EnvID, AgentID, ObsType, ActionType]):
