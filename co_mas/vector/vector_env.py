@@ -56,9 +56,7 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
     closed: bool = False
 
     def reset(
-        self,
-        seed: int | None = None,
-        options: dict | None = None,
+        self, seed: int | list[int] | Dict[EnvID, int] | None = None, options: dict | None = None
     ) -> Tuple[Dict[AgentID, Dict[EnvID, ObsType]], Dict[AgentID, Dict[EnvID, Dict]]]:
         """
         Reset all parallel environments and return a batch of initial observations and info.
@@ -77,10 +75,18 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
         """
         raise NotImplementedError
 
-    def close(self) -> None:
+    def close(self, **kwargs) -> None:
         """
         Close all parallel environments.
+        It calls `close_extras` and set `closed` as `True`.
         """
+        if self.closed:
+            return
+        self.close_extras(**kwargs)
+        self.closed = True
+
+    def close_extras(self, **kwargs) -> None:
+        """Clean up the extra resources e.g. beyond what's in this base class."""
         raise NotImplementedError
 
     @property
@@ -190,7 +196,7 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
 
     @property
     def max_num_agents(self) -> int:
-        """return the maximum number of agents in all sub-environments."""
+        """return the maximum number of agents in all\ sub-environments."""
         return len(self.possible_agents)
 
     def _update_envs_have_agents(self):

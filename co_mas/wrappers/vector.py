@@ -3,6 +3,7 @@ from typing import Dict
 import gymnasium as gym
 from pettingzoo.utils.env import AgentID, ObsType
 
+from co_mas.vector.utils import dict_space_from_dict_single_spaces
 from co_mas.vector.vector_env import (
     BaseVectorParallelEnvWrapper,
     EnvID,
@@ -50,11 +51,8 @@ class SyncAgentStateVectorParallelEnvWrapper(AgentStateVectorParallelEnvWrapper)
         )
         super().__init__(env)
         self.single_state_spaces = self.env.envs[0].state_spaces
-        self.state_spaces = gym.spaces.Dict(
-            {
-                agent: gym.spaces.Dict({env_id: self.single_state_spaces[agent] for env_id in self.env.env_ids})
-                for agent in self.possible_agents
-            }
+        self.state_spaces = dict_space_from_dict_single_spaces(
+            self.single_state_spaces, self.possible_agents, self.env.env_ids
         )
 
     def state(self) -> Dict[AgentID, Dict[EnvID, ObsType]]:

@@ -4,9 +4,12 @@ from collections import defaultdict
 from copy import deepcopy
 from typing import Callable, Dict, Iterator, Sequence, Tuple
 
-import gymnasium as gym
 from pettingzoo.utils.env import ActionType, AgentID, ObsType, ParallelEnv
 
+from co_mas.vector.utils import (
+    dict_space_from_dict_single_spaces,
+    dict_space_from_single_space,
+)
 from co_mas.vector.vector_env import EnvID, VectorParallelEnv
 from co_mas.wrappers import AutoResetParallelEnvWrapper
 
@@ -162,24 +165,18 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self.possible_agents = tuple(self.envs[0].possible_agents)
         self._check_spaces()
 
-        self.observation_spaces = gym.spaces.Dict(
-            {
-                agent: gym.spaces.Dict({env_id: self.single_observation_spaces[agent] for env_id in self.env_ids})
-                for agent in self.possible_agents
-            }
+        self.observation_spaces = dict_space_from_dict_single_spaces(
+            self.single_observation_spaces, self.possible_agents, self.env_ids
         )
-        self.action_spaces = gym.spaces.Dict(
-            {
-                agent: gym.spaces.Dict({env_id: self.single_action_spaces[agent] for env_id in self.env_ids})
-                for agent in self.possible_agents
-            }
+        self.action_spaces = dict_space_from_dict_single_spaces(
+            self.single_action_spaces, self.possible_agents, self.env_ids
         )
+        self.single_state_space = None
+        self.state_space = None
         if hasattr(self.envs[0], "state_space"):
             if not hasattr(self.envs[0], "state_spaces"):
                 self.single_state_space = self.envs[0].state_space
-                self.state_space = gym.spaces.Dict(
-                    {env_id: env.state_space for env_id, env in zip(self.env_ids, self.envs)}
-                )
+                self.state_space = dict_space_from_single_space(self.single_state_space, self.env_ids)
 
         self.agents = {env_id: tuple(env.agents[:]) for env_id, env in zip(self.env_ids, self.envs)}
         self.agents_old = {env_id: [] for env_id in self.env_ids}
@@ -317,15 +314,13 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
         return observation, reward, termination, truncation, vector_info
 
-    def close(self):
-        if self.closed:
-            return
-        for env in self.envs:
-            env.close()
-        self.closed = True
+    def close_extras(self, **kwargs):
+        if hasattr(self, "envs"):
+            for env in self.envs:
+                env.close()
 
     def state(self) -> Dict[EnvID, ObsType]:
-        if not hasattr(self, "state_space"):
+        if self.state_space is None:
             if hasattr(self.envs[0], "state_spaces"):
                 raise RuntimeError(
                     "Please use `AgentStateVectorParallelEnvWrapper` to get the state for each agent since sub-environments have `state_spaces` functions."
@@ -350,6 +345,10 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         """Returns an attribute with ``name``, unless ``name`` starts with an underscore."""
         if name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
+
+        if name in ["state_spaces"]:
+            raise AttributeError(f"attribute '{name}' not found in {self.__class__.__name__}")
+
         if name != "envs" and all(hasattr(env, name) for env in self.envs):
             return tuple(getattr(env, name) for env in self.envs)
         else:
