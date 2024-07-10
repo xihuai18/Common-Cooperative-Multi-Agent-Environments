@@ -1,3 +1,4 @@
+import traceback
 from pprint import pformat
 
 from loguru import logger
@@ -27,9 +28,9 @@ def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
     obs, info = sync_vec_env.reset()
     should_be_reset = {env_id: len(_agents) == 0 for env_id, _agents in sync_vec_env.agents.items()}
 
-    logger.debug("agents:\n" + pformat(sync_vec_env.agents))
-    logger.debug("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
-    logger.debug("info:\n" + pformat(info))
+    logger.trace("agents:\n" + pformat(sync_vec_env.agents))
+    logger.trace("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
+    logger.trace("info:\n" + pformat(info))
     for _ in tqdm(range(num_cycles)):
         action = {}
         for agent in sync_vec_env.possible_agents:
@@ -38,14 +39,14 @@ def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
                 action[agent] = vector_sample_sample(
                     agent, obs[agent], info[agent], sync_vec_env.action_space(agent), agent_envs
                 )
-        logger.debug("action:\n" + pformat(action))
+        logger.trace("action:\n" + pformat(action))
 
         envs_have_agents = sync_vec_env.envs_have_agents
 
         try:
             state = sync_vec_env.state()
-        except Exception as e:
-            logger.warning(e)
+        except Exception:
+            logger.warning(traceback.format_exc())
         else:
             if list(state.keys())[0] in sync_vec_env.env_ids:
                 assert set(state.keys()).issuperset(
@@ -56,19 +57,19 @@ def sync_vector_env_test(sync_vec_env: SyncVectorParallelEnv, num_cycles=1000):
                     envs_have_agent = envs_have_agents[agent]
                     assert set(state.get(agent, {}).keys()).issuperset(
                         envs_have_agent
-                    ), f"States should contain {envs_have_agent}"
+                    ), f"States should contain {envs_have_agent}, while the keys are {state.get(agent, {}).keys()}"
 
         obs, rew, terminated, truncated, info = sync_vec_env.step(action)
 
-        logger.debug("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
-        logger.debug("info:\n" + pformat(info))
-        logger.debug("agents:\n" + pformat(sync_vec_env.agents))
-        logger.debug("terminated:\n" + pformat(terminated))
-        logger.debug("truncated:\n" + pformat(truncated))
+        logger.trace("envs_have_agents:\n" + pformat(sync_vec_env.envs_have_agents))
+        logger.trace("info:\n" + pformat(info))
+        logger.trace("agents:\n" + pformat(sync_vec_env.agents))
+        logger.trace("terminated:\n" + pformat(terminated))
+        logger.trace("truncated:\n" + pformat(truncated))
 
         agents = sync_vec_env.agents
         should_be_reset = {env_id: len(_agents) == 0 for env_id, _agents in agents.items()}
-        logger.debug(f"{pformat(should_be_reset)}\n==?\n{pformat(sync_vec_env.unwrapped._autoreset_envs)}")
+        logger.trace(f"{pformat(should_be_reset)}\n==?\n{pformat(sync_vec_env.unwrapped._autoreset_envs)}")
         assert all(
             sync_vec_env.unwrapped._autoreset_envs[env_id] == should_be_reset[env_id] for env_id in sync_vec_env.env_ids
         ), "Autoreset environments should be reset"

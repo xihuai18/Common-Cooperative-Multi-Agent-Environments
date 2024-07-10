@@ -4,6 +4,7 @@ from collections import defaultdict
 from copy import deepcopy
 from typing import Callable, Dict, Iterator, Sequence, Tuple
 
+from loguru import logger
 from pettingzoo.utils.env import ActionType, AgentID, ObsType, ParallelEnv
 
 from co_mas.vector.utils import (
@@ -150,9 +151,17 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         >>> sync_vec_env.close()
     """
 
-    def __init__(self, env_fns: Iterator[Callable[[], ParallelEnv]] | Sequence[Callable[[], ParallelEnv]]):
+    def __init__(
+        self, env_fns: Iterator[Callable[[], ParallelEnv]] | Sequence[Callable[[], ParallelEnv]], debug: bool = False
+    ):
+        """
+        Parameters:
+            env_fns: An iterator of functions that return a parallel environment when called.
+            debug: Whether to add assertions, which will slow down the environment.
+        """
 
         self.env_fns = env_fns
+        self.debug = debug
         # Initialise all sub-environments
         self.envs = [env_fn() for env_fn in env_fns]
         self.num_envs = len(self.envs)
@@ -226,6 +235,9 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         # if auto_need_autoreset_envs[i] == True, manually reset it, otherwise env `i` will be reset automatically.
         self._need_autoreset_envs = {env_id: _mark_env(env) for env_id, env in zip(self.env_ids, self.envs)}
 
+        if self.debug:
+            logger.debug(f"need_autoreset_envs: {self._need_autoreset_envs}")
+
     def reset(
         self, seed: int | list[int] | Dict[EnvID, int] | None = None, options: dict | None = None
     ) -> Tuple[Dict[AgentID, Dict[EnvID, ObsType]], Dict[AgentID, Dict[EnvID, Dict]]]:
@@ -246,9 +258,8 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         for env_id, _seed in seed.items():
             env = self.sub_env(env_id)
             obs, info = env.reset(seed=_seed, options=options)
-            for agent in self.possible_agents:
-                if agent in obs:
-                    observation[agent][env_id] = obs[agent]
+            for agent in env.agents:
+                observation[agent][env_id] = obs[agent]
             self.add_info_in_place(vector_info, info, env_id)
 
         self.construct_batch_result_in_place(observation)
@@ -260,6 +271,8 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
         self._autoreset_envs = {env_id: False for env_id in self.env_ids}
 
+        self.agents_old = deepcopy(self.agents)
+
         return observation, vector_info
 
     def step(self, actions: Dict[AgentID, Dict[EnvID, ActionType]]) -> Tuple[
@@ -269,6 +282,8 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         Dict[AgentID, Dict[EnvID, bool]],
         Dict[AgentID, Dict[EnvID, Dict]],
     ]:
+        reseted_agents: Dict[EnvID] = {}
+
         observation = {agent: {} for agent in self.possible_agents}
         reward = {agent: {} for agent in self.possible_agents}
         termination = {agent: {} for agent in self.possible_agents}
@@ -281,21 +296,36 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                 env_actions[env_id][agent] = agent_actions[env_id]
         for env_id, env_acts in env_actions.items():
             env = self.sub_env(env_id)
+            use_reseted_agents = False
             if self._autoreset_envs[env_id]:
-                obs, info = env.reset()
-                for agent in env.agents:
-                    observation[agent][env_id] = obs[agent]
-                    reward[agent][env_id] = 0
-                    termination[agent][env_id] = False
-                    truncation[agent][env_id] = False
-            else:
+                if self._need_autoreset_envs[env_id]:
+                    obs, info = env.reset()
+                    for agent in env.agents:
+                        observation[agent][env_id] = obs[agent]
+                        reward[agent][env_id] = 0
+                        termination[agent][env_id] = False
+                        truncation[agent][env_id] = False
+                    reseted_agents[env_id] = deepcopy(env.agents)
+                else:
+                    use_reseted_agents = True
+            if not self._autoreset_envs[env_id] or use_reseted_agents:
                 env_agents = env.agents
                 obs, rew, term, trunc, info = env.step(env_acts)
+                if use_reseted_agents:
+                    env_agents = env.agents
+                    reseted_agents[env_id] = deepcopy(env.agents)
+                if self.debug:
+                    self._check_containing_agents(env_agents, obs)
+                    self._check_containing_agents(env_agents, rew)
+                    self._check_containing_agents(env_agents, term)
+                    self._check_containing_agents(env_agents, trunc)
+                    self._check_containing_agents(env_agents, info)
                 for agent in env_agents:
                     observation[agent][env_id] = obs[agent]
                     reward[agent][env_id] = rew[agent]
                     termination[agent][env_id] = term[agent]
                     truncation[agent][env_id] = trunc[agent]
+
             self.add_info_in_place(vector_info, info, env_id)
 
         self.construct_batch_result_in_place(observation)
@@ -303,14 +333,12 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self.construct_batch_result_in_place(termination)
         self.construct_batch_result_in_place(truncation)
 
-        self._autoreset_envs = {
-            env_id: (len(env.agents) == 0) and self._need_autoreset_envs[env_id]
-            for env_id, env in zip(self.env_ids, self.envs)
-        }
+        self._autoreset_envs = {env_id: (len(env.agents) == 0) for env_id, env in zip(self.env_ids, self.envs)}
 
         self.agents_old = deepcopy(self.agents)
         self.agents = {env_id: tuple(env.agents[:]) for env_id, env in zip(self.env_ids, self.envs)}
         self._update_envs_have_agents()
+        self.agents_old |= reseted_agents
 
         return observation, reward, termination, truncation, vector_info
 

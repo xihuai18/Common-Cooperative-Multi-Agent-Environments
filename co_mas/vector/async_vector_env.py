@@ -52,6 +52,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         context: str | None = None,
         daemon: bool = True,
         worker: Callable[[int, Callable[[], ParallelEnv], Connection, Connection, bool, Queue], None] | None = None,
+        debug: bool = False,
     ):
         """
         Vectorized environment that runs multiple environments in parallel, modified from gymnasium.
@@ -62,10 +63,12 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             context: Context for `multiprocessing`. If ``None``, then the default context is used.
             daemon: If ``True``, then subprocesses have ``daemon`` flag turned on; that is, they will quit if the head process quits. However, ``daemon=True`` prevents subprocesses to spawn children, so for some environments you may want to have it set to ``False``.
             worker: If set, then use that worker in a subprocess instead of a default one. Can be useful to override some inner vector env logic, for instance, how resets on termination or truncation are handled.
+            debug: Whether to add assertions, which will slow down the environment.
         """
 
         self.env_fns = env_fns
         self.use_shared_memory = use_shared_memory
+        self.debug = debug
 
         self.num_envs = len(env_fns)
         self.env_ids = tuple(f"env_{env_id}" for env_id in range(self.num_envs))
@@ -86,10 +89,18 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
 
         self.single_state_space = None
         self.state_space = None
+        self._single_state_spaces = None
+        self._state_spaces = None
         if hasattr(self.dummy_env, "state_space"):
             if not hasattr(self.dummy_env, "state_spaces"):
                 self.single_state_space = self.dummy_env.state_space
                 self.state_space = dict_space_from_single_space(self.single_state_space, self.env_ids)
+            else:
+                # compatible with AgentStateParallelEnvWrapper
+                self._single_state_spaces = self.dummy_env.state_spaces
+                self._state_spaces = dict_space_from_dict_single_spaces(
+                    self._single_state_spaces, self.possible_agents, self.env_ids
+                )
 
         self.dummy_env.close()
 
@@ -113,6 +124,10 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                     AgentID n: np.array of shape `single_observation_space`
                 )
                 """
+                _state_buffer = None
+                self.states = None
+                _agent_state_buffer = None
+                self._agent_states = None
                 if self.single_state_space is not None:
                     _state_buffer = create_shared_memory(self.single_state_space, n=self.num_envs, ctx=ctx)
                     """ 
@@ -128,9 +143,11 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                         AgentID n: np.array of shape `single_state_space`
                     )
                     """
-                else:
-                    _state_buffer = None
-                    self.states = None
+                elif self._single_state_spaces is not None:
+                    _agent_state_buffer = create_shared_memory(self._single_state_spaces, n=self.num_envs, ctx=ctx)
+                    self._agent_states = read_from_shared_memory(
+                        self._single_state_spaces, _agent_state_buffer, n=self.num_envs
+                    )
 
             except CustomSpaceError as e:
                 raise ValueError(
@@ -162,7 +179,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                         child_pipe,
                         parent_pipe,
                         _obs_buffer,
-                        _state_buffer,
+                        _state_buffer or _agent_state_buffer,
                         self.error_queue,
                     ),
                 )
@@ -331,8 +348,9 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                     observation[agent][env_id] = self.observations[i][agent]
                 else:
                     observation[agent][env_id] = obs[agent]
-
         self.construct_batch_result_in_place(observation)
+
+        self.agents_old = deepcopy(self.agents)
 
         self._state = AsyncState.DEFAULT
         return observation, vector_info
@@ -348,6 +366,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                 )
             else:
                 raise NotImplementedError("Sub-environments do not have a `state` function.")
+        assert not self.use_shared_memory or self.states is not None, "Shared memory is not enabled."
 
         if self._state != AsyncState.DEFAULT:
             raise AlreadyPendingCallError(
@@ -368,6 +387,46 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                     state[env_id] = self.states[i]
                 else:
                     state[env_id] = _state
+
+        self._raise_if_errors(successes)
+
+        self._state = AsyncState.DEFAULT
+        return state
+
+    def _agent_state(self) -> Dict[AgentID, Dict[EnvID, ObsType]]:
+        """
+        Return the state of all sub environments.
+        """
+        assert (
+            hasattr(self.dummy_env, "state_spaces")
+            and hasattr(self.dummy_env, "state_space")
+            and hasattr(self.dummy_env, "state")
+        ), "Sub-environments should have `state`, `state_spaces` and `state_space` attributes."
+
+        if self._state != AsyncState.DEFAULT:
+            raise AlreadyPendingCallError(
+                f"Calling `state` while waiting for a pending call to `{self._state.value}` to complete",
+                str(self._state.value),
+            )
+        for pipe in self.parent_pipes:
+            pipe.send(("state", {}))
+
+        assert not self.use_shared_memory or self._agent_states is not None, "Shared memory is not enabled."
+
+        successes = []
+        state = {agent: {} for agent in self.possible_agents}
+        for i, env_id in enumerate(self.env_ids):
+            pipe = self._map_env_id_to_parent_pipe[env_id]
+            _state, success = pipe.recv()
+            successes.append(success)
+            if success:
+                if self.debug:
+                    self._check_containing_agents(self.agents_old, _state)
+                for agent in self.agents_old[env_id]:
+                    if self.use_shared_memory and self._agent_states is not None:
+                        state[agent][env_id] = self._agent_states[i][agent]
+                    else:
+                        state[agent][env_id] = _state[agent]
 
         self._raise_if_errors(successes)
 
@@ -433,6 +492,12 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             (obs, rew, term, trunc, info), success = pipe.recv()
             successes.append(success)
             if success:
+                if self.debug:
+                    self._check_containing_agents(self.agents[env_id], obs)
+                    self._check_containing_agents(self.agents[env_id], rew)
+                    self._check_containing_agents(self.agents[env_id], term)
+                    self._check_containing_agents(self.agents[env_id], trunc)
+                    self._check_containing_agents(self.agents[env_id], info)
                 for agent in self.agents[env_id]:
                     if self.use_shared_memory:
                         observation[agent][env_id] = self.observations[i][agent]
@@ -488,7 +553,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             pipe.send(("_call", (name, args, kwargs)))
         self._state = AsyncState.WAITING_CALL
 
-    def _call_wait(self, timeout: int | float | None = None) -> Dict[EnvID, Any]:
+    def _call_await(self, timeout: int | float | None = None) -> Dict[EnvID, Any]:
         """Calls all parent pipes and waits for the results.
 
         Args:

@@ -210,6 +210,11 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
             for agent in remove_agents:
                 self._envs_have_agents[agent].remove(env_id)
 
+    def _check_containing_agents(self, agents: Tuple[AgentID], env_results: Dict[AgentID, Any]) -> bool:
+        assert set(agents) == set(
+            env_results.keys()
+        ), f"The agents in the environment {sorted(list(agents))} should be the same as the agents in the results {sorted(list(env_results.keys()))}."
+
 
 class BaseVectorParallelEnvWrapper(Generic[EnvID, AgentID, ObsType, ActionType]):
     """

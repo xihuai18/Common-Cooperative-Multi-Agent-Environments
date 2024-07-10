@@ -15,7 +15,7 @@ from co_mas.env import ParallelEnv
 from co_mas.test.utils import sample_action
 
 
-def parallel_api_test(par_env: ParallelEnv, num_cycles=1000):
+def parallel_api_test(par_env: ParallelEnv, num_cycles=1000, agent_state: bool = False):
     par_env.max_cycles = num_cycles
 
     if not hasattr(par_env, "possible_agents"):
@@ -42,12 +42,14 @@ def parallel_api_test(par_env: ParallelEnv, num_cycles=1000):
         truncated = {agent: False for agent in par_env.agents}
         live_agents = set(par_env.agents[:])
         has_finished = set()
-        for _ in range(num_cycles):
+        for step in range(num_cycles):
             actions = {
                 agent: sample_action(agent, obs[agent], info[agent], par_env.action_space(agent))
                 for agent in par_env.agents
             }
             obs, rew, terminated, truncated, info = par_env.step(actions)
+            if agent_state:
+                state = par_env.state()
             for agent in par_env.agents:
                 assert agent not in has_finished, "agent cannot be revived once dead"
 
@@ -59,17 +61,26 @@ def parallel_api_test(par_env: ParallelEnv, num_cycles=1000):
             assert isinstance(terminated, dict)
             assert isinstance(truncated, dict)
             assert isinstance(info, dict)
+            if agent_state:
+                assert isinstance(state, dict)
 
-            keys = "observation reward terminated truncated info".split()
-            vals = [obs, rew, terminated, truncated, info]
+            if agent_state:
+                keys = "observation reward terminated truncated info state".split()
+                vals = [obs, rew, terminated, truncated, info, state]
+            else:
+                keys = "observation reward terminated truncated info".split()
+                vals = [obs, rew, terminated, truncated, info]
+
             for k, v in zip(keys, vals):
                 key_set = set(v.keys())
                 if key_set == live_agents:
                     continue
                 if len(key_set) < len(live_agents):
-                    warnings.warn(f"Live agent was not given {k}")
+                    logger.warning(
+                        f"Step {step}: Live agent was not given {k}.\nLive agents {live_agents}\nGiven {key_set}"
+                    )
                 else:
-                    warnings.warn(f"Agent was given {k} but was dead last turn")
+                    logger.warning(f"Agent was given {k} but was dead last turn")
 
             if hasattr(par_env, "possible_agents"):
                 assert set(par_env.agents).issubset(
