@@ -63,33 +63,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                         'env_1': array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0])}},
         ...}
         >>> state = sync_vec_env.state()
-        >>> pprint(state)
-        {'env_0': {
-            'player_0': array([
-                -1.0110294 , -0.        ,  0.6066176 , -0.        ,  0.7077206 ,
-                0.20325357,  0.7077206 , -0.20325357,  0.        , -0.        ,
-                0.        , -0.        ,  0.        , -0.        ,  0.        ,
-                -0.        ,  1.0110294 ,  0.        ,  0.75827205,  0.        ,
-                -0.        ,  0.        , -0.        ,  0.        ,  0.62      ,
-                -0.        ,  0.11061639, -0.        ,  0.        ,  0.00616395,
-                1.        ,  0.        ,  0.        ,  1.        ,  0.        ,
-                0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
-                1.        ,  0.        ,  0.        ,  0.        ,  0.        ,
-                0.        ,  1.        ,  0.        ,  1.        ,  0.        ],
-                dtype=float32),
-            'player_1': array([
-                -1.0110294 , -0.        ,  0.6066176 , -0.        ,  0.7077206 ,
-                0.20325357,  0.7077206 , -0.20325357,  0.        , -0.        ,
-                0.        , -0.        ,  0.        , -0.        ,  0.        ,
-                -0.        ,  1.0110294 ,  0.        ,  0.75827205,  0.        ,
-                -0.        ,  0.        , -0.        ,  0.        ,  0.62      ,
-                -0.        ,  0.11061639, -0.        ,  0.        ,  0.00616395,
-                1.        ,  0.        ,  0.        ,  1.        ,  0.        ,
-                0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
-                1.        ,  0.        ,  0.        ,  0.        ,  0.        ,
-                0.        ,  1.        ,  0.        ,  0.        ,  1.        ],
-            dtype=float32)},
-        ...}
+        RuntimeError: Please use `AgentStateVectorParallelEnvWrapper` to get the state for each agent since sub-environments have `state_spaces` functions.
         >>> from co_mas.test.utils import vector_sample_sample
         >>> action = {}
         >>> for agent in sync_vec_env.possible_agents:
@@ -101,6 +75,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         ...
         >>> pprint(action)
         {'player_0': {'env_0': 6, 'env_1': 14}, 'player_1': {'env_0': 10, 'env_1': 7}}
+        >>> observations, rewards, terminates, truncates, infos = sync_vec_env.step(action)
         >>> pprint(rewards)
         {'player_0': {'env_0': np.float32(0.0), 'env_1': np.float32(0.0)},
         'player_1': {'env_0': np.float32(0.0), 'env_1': np.float32(0.0)}}
@@ -282,7 +257,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         Dict[AgentID, Dict[EnvID, bool]],
         Dict[AgentID, Dict[EnvID, Dict]],
     ]:
-        reseted_agents: Dict[EnvID] = {}
+        reset_agents: Dict[EnvID] = {}
 
         observation = {agent: {} for agent in self.possible_agents}
         reward = {agent: {} for agent in self.possible_agents}
@@ -296,7 +271,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                 env_actions[env_id][agent] = agent_actions[env_id]
         for env_id, env_acts in env_actions.items():
             env = self.sub_env(env_id)
-            use_reseted_agents = False
+            use_reset_agents = False
             if self._autoreset_envs[env_id]:
                 if self._need_autoreset_envs[env_id]:
                     obs, info = env.reset()
@@ -305,15 +280,15 @@ class SyncVectorParallelEnv(VectorParallelEnv):
                         reward[agent][env_id] = 0
                         termination[agent][env_id] = False
                         truncation[agent][env_id] = False
-                    reseted_agents[env_id] = deepcopy(env.agents)
+                    reset_agents[env_id] = deepcopy(env.agents)
                 else:
-                    use_reseted_agents = True
-            if not self._autoreset_envs[env_id] or use_reseted_agents:
+                    use_reset_agents = True
+            if not self._autoreset_envs[env_id] or use_reset_agents:
                 env_agents = env.agents
                 obs, rew, term, trunc, info = env.step(env_acts)
-                if use_reseted_agents:
+                if use_reset_agents:
                     env_agents = env.agents
-                    reseted_agents[env_id] = deepcopy(env.agents)
+                    reset_agents[env_id] = deepcopy(env.agents)
                 if self.debug:
                     self._check_containing_agents(env_agents, obs)
                     self._check_containing_agents(env_agents, rew)
@@ -338,7 +313,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         self.agents_old = deepcopy(self.agents)
         self.agents = {env_id: tuple(env.agents[:]) for env_id, env in zip(self.env_ids, self.envs)}
         self._update_envs_have_agents()
-        self.agents_old |= reseted_agents
+        self.agents_old |= reset_agents
 
         return observation, reward, termination, truncation, vector_info
 

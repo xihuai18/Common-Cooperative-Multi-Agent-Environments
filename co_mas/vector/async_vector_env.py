@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 import multiprocessing
-import sys
 import time
+import traceback
 from collections import defaultdict
 from copy import deepcopy
 from enum import Enum
+from functools import partial
 from multiprocessing import Queue
 from multiprocessing.connection import Connection
 from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple
 
+import numpy as np
 from gymnasium.error import AlreadyPendingCallError, CustomSpaceError, NoAsyncCallError
 from gymnasium.vector.utils import (
     CloudpickleWrapper,
     clear_mpi_env_vars,
+    create_empty_array,
     create_shared_memory,
     read_from_shared_memory,
     write_to_shared_memory,
@@ -43,6 +46,68 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
     Vectorized PettingZoo Parallel environment that runs multiple environments in parallel.
 
     It uses `multiprocessing` processes, and pipes for communication, and uses shared memory for acceleration by default.
+
+    Example:
+        >>> from co_mas.vector import AsyncVectorParallelEnv
+        >>> from smac_pettingzoo import smacv1_pettingzoo_v1
+        >>> def env_smacv1_fn():
+        ...     return smacv1_pettingzoo_v1.parallel_env("3m")
+        ...
+        >>> async_vec_env = AsyncVectorParallelEnv([env_smacv1_fn, env_smacv1_fn], debug=True)
+
+        >>> async_vec_env
+        AsyncVectorParallelEnv(num_envs=2)
+        >>> obs, info = async_vec_env.reset(seed=42)
+        >>> from pprint import pprint
+        >>> pprint(obs)
+        {'marine_0': {'env_0': array([1.        , 0.0764974 , 0.        , 0.0764974 , 1.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 1.        ,
+        0.10818365, 0.0764974 , 0.0764974 , 1.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 1.        , 1.        ,
+        1.        , 1.        , 1.        , 0.        , 0.        ,
+        0.        , 1.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 1.        , 0.        , 0.        ], dtype=float32),
+                'env_1': array([1.        , 0.0764974 , 0.        , 0.0764974 , 1.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 1.        ,
+        0.10818365, 0.0764974 , 0.0764974 , 1.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 1.        , 1.        ,
+        1.        , 1.        , 1.        , 0.        , 0.        ,
+        0.        , 1.        , 0.        , 0.        , 0.        ,
+        0.        , 0.        , 0.        , 0.        , 0.        ,
+        0.        , 1.        , 0.        , 0.        ], dtype=float32)},
+        ...}
+        >>> pprint(info)
+        {'marine_0': {'action_mask': {
+                        'env_0': array([0, 1, 1, 1, 1, 1, 0, 0, 0]),
+                        'env_1': array([0, 1, 1, 1, 1, 1, 0, 0, 0])}},
+        ...}
+        >>> state = async_vec_env.state()
+        RuntimeError: Please use `AgentStateVectorParallelEnvWrapper` to get the state for each agent since sub-environments have `state_spaces` functions.
+        >>> from co_mas.test.utils import vector_sample_sample
+        >>> action = {}
+        >>> for agent in async_vec_env.possible_agents:
+        ...      agent_envs = async_vec_env.envs_have_agent(agent)
+        ...      if len(agent_envs) > 0:
+        ...          action[agent] = vector_sample_sample(
+        ...              agent, obs[agent], info[agent], async_vec_env.action_space(agent), agent_envs
+        ...          )
+        ...
+        >>> pprint(action)
+        {'marine_0': {'env_0': np.int64(5), 'env_1': np.int64(1)},
+        'marine_1': {'env_0': np.int64(4), 'env_1': np.int64(4)},
+        'marine_2': {'env_0': np.int64(4), 'env_1': np.int64(2)}}
+        >>> observations, rewards, terminates, truncates, infos = async_vec_env.step(action)
     """
 
     def __init__(
@@ -108,14 +173,14 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         ctx = multiprocessing.get_context(context)
         if self.use_shared_memory:
             try:
-                _obs_buffer = create_shared_memory(self.single_observation_space, n=self.num_envs, ctx=ctx)
+                _obs_buffer = create_shared_memory(self.single_observation_spaces, n=self.num_envs, ctx=ctx)
                 """ 
                 {
                     AgentID: multiprocessing.Array of shape np.prod(`num_envs`, *`single_observation_space`)
                 } 
                 """
                 self.observations: Tuple[Dict[AgentID, Any]] = read_from_shared_memory(
-                    self.single_observation_space, _obs_buffer, n=self.num_envs
+                    self.single_observation_spaces, _obs_buffer, n=self.num_envs
                 )
                 """ 
                 (
@@ -158,10 +223,10 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         else:
             _obs_buffer = None
             self.observations: Tuple[Dict[AgentID, Any]] = None
-            if hasattr(self, "single_state_space"):
-                _state_buffer = None
-            else:
-                _state_buffer = None
+            _state_buffer = None
+            self.states = None
+            _agent_state_buffer = None
+            self._agent_states = None
 
         self.parent_pipes: List[Connection] = []
         self.processes: List[multiprocessing.Process] = []
@@ -197,13 +262,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self._map_env_id_to_parent_pipe = dict(zip(self.env_ids, self.parent_pipes))
         self._map_env_id_to_process = dict(zip(self.env_ids, self.processes))
 
-        self.agents = {}
-        for env_id, pipe in self._map_env_id_to_parent_pipe.items():
-            pipe.send(("agents", {}))
-        agents, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
-        self._raise_if_errors(successes)
-        for env_id, _agents in zip(self.env_ids, agents):
-            self.agents[env_id] = _agents
+        self._update_agents()
         self.agents_old = {env_id: [] for env_id in self.env_ids}
         self._envs_have_agents = defaultdict(list)
         self._update_envs_have_agents()
@@ -332,12 +391,14 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             (obs, info), success = pipe.recv()
             successes.append(success)
             if success:
+                if self.debug:
+                    if not self.use_shared_memory:
+                        self._check_containing_agents(self.agents_old[env_id], obs)
                 obses.append(obs)
                 self.add_info_in_place(vector_info, info, env_id)
         self._raise_if_errors(successes)
 
         self._update_agents()
-        self._raise_if_errors(successes)
         self.agents_old = {env_id: [] for env_id in self.env_ids}
         self._envs_have_agents = defaultdict(list)
         self._update_envs_have_agents()
@@ -355,7 +416,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self._state = AsyncState.DEFAULT
         return observation, vector_info
 
-    def state(self) -> Dict[EnvID, ObsType]:
+    def state(self, timeout: float | None = None) -> Dict[EnvID, ObsType]:
         """
         Return the state of all sub environments.
         """
@@ -375,6 +436,10 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             )
         for pipe in self.parent_pipes:
             pipe.send(("state", {}))
+
+        if not self._poll_pipe_envs(timeout):
+            self._state = AsyncState.DEFAULT
+            raise multiprocessing.TimeoutError(f"The call to `call_wait` has timed out after {timeout} second(s).")
 
         successes = []
         state = {}
@@ -421,7 +486,8 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             successes.append(success)
             if success:
                 if self.debug:
-                    self._check_containing_agents(self.agents_old, _state)
+                    if not self.use_shared_memory:
+                        self._check_containing_agents(self.agents_old[env_id], _state)
                 for agent in self.agents_old[env_id]:
                     if self.use_shared_memory and self._agent_states is not None:
                         state[agent][env_id] = self._agent_states[i][agent]
@@ -487,18 +553,25 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         vector_info = {agent: {} for agent in self.possible_agents}
 
         successes = []
+        reset_agents: Dict[EnvID, bool] = {env_id: False for env_id in self.env_ids}
         for i, env_id in enumerate(self.env_ids):
             pipe = self._map_env_id_to_parent_pipe[env_id]
             (obs, rew, term, trunc, info), success = pipe.recv()
             successes.append(success)
             if success:
+                if len(self.agents[env_id]) == 0:  # will be reset
+                    reset_agents[env_id] = True
+                    env_agents = self.possible_agents
+                else:
+                    env_agents = self.agents[env_id]
                 if self.debug:
-                    self._check_containing_agents(self.agents[env_id], obs)
-                    self._check_containing_agents(self.agents[env_id], rew)
-                    self._check_containing_agents(self.agents[env_id], term)
-                    self._check_containing_agents(self.agents[env_id], trunc)
-                    self._check_containing_agents(self.agents[env_id], info)
-                for agent in self.agents[env_id]:
+                    if not self.use_shared_memory:
+                        self._check_containing_agents(env_agents, obs)
+                    self._check_containing_agents(env_agents, rew)
+                    self._check_containing_agents(env_agents, term)
+                    self._check_containing_agents(env_agents, trunc)
+                    self._check_containing_agents(env_agents, info)
+                for agent in env_agents:
                     if self.use_shared_memory:
                         observation[agent][env_id] = self.observations[i][agent]
                     else:
@@ -516,6 +589,10 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self.agents_old = deepcopy(self.agents)
         self._update_agents()
         self._update_envs_have_agents()
+
+        for env_id, _reset in reset_agents.items():
+            if _reset:
+                self.agents_old[env_id] = deepcopy(self.agents[env_id])
 
         self._state = AsyncState.DEFAULT
 
@@ -657,11 +734,15 @@ def _async_parallel_env_worker(
         state_space = None
 
     need_autoreset = True
+    _env = env
     while hasattr(env, "env"):
         if isinstance(env, AutoResetParallelEnvWrapper):
             need_autoreset = False
         env = env.env
+    env = _env
     autoreset = False
+
+    logger.debug(f"Async Worker Index {index}: {need_autoreset=}")
 
     parent_pipe.close()
 
@@ -679,7 +760,9 @@ def _async_parallel_env_worker(
             elif command == "step":
                 if autoreset:
                     observation, info = env.reset()
-                    reward, terminated, truncated = 0, False, False
+                    reward, terminated, truncated = {}, {}, {}
+                    for agent in env.agents:
+                        reward[agent], terminated[agent], truncated[agent] = 0.0, False, False
                 else:
                     (
                         observation,
@@ -691,15 +774,24 @@ def _async_parallel_env_worker(
                 autoreset = (len(env.agents) == 0) and need_autoreset
 
                 if shared_memory_observation:
+                    for agent in env.possible_agents:
+                        if agent not in observation:
+                            observation[agent] = create_empty_array(
+                                observation_spaces[agent], fn=partial(np.full, fill_value=np.nan)
+                            )
                     write_to_shared_memory(observation_spaces, index, observation, shared_memory_observation)
                     observation = None
 
                 pipe.send(((observation, reward, terminated, truncated, info), True))
             elif command == "state":
-                # TODO: shared_memory for state
                 state = env.state()
                 if shared_memory_state:
                     if state_spaces:
+                        for agent in env.possible_agents:
+                            if agent not in state:
+                                state[agent] = create_empty_array(
+                                    state_spaces[agent], fn=partial(np.full, fill_value=np.nan)
+                                )
                         write_to_shared_memory(state_spaces, index, state, shared_memory_state)
                     elif state_space:
                         write_to_shared_memory(state_space, index, state, shared_memory_state)
@@ -750,8 +842,9 @@ def _async_parallel_env_worker(
                 raise RuntimeError(
                     f"Received unknown command `{command}`. Must be one of [`reset`, `step`, `state`, `agents`, `close`, `_call`, `_setattr`, `_check_spaces`]."
                 )
-    except (KeyboardInterrupt, Exception):
-        error_queue.put((index,) + sys.exc_info()[:2])
+    except (KeyboardInterrupt, Exception) as e:
+        exc_message = traceback.format_exc()
+        error_queue.put((index, type(e), exc_message))
         pipe.send((None, False))
     finally:
         env.close()

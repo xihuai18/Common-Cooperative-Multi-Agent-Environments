@@ -43,9 +43,13 @@ pip install .
 
 ### VectorEnv
 - [x] SyncVectorParallelEnv: VectorEnv with serial step and reset.
-- [ ] AsyncVectorParallelEnv: VectorEnv with parallel step and reset.
+- [x] AsyncVectorParallelEnv: VectorEnv with parallel step and reset.
 
 ### VectorEnv Wrappers
 - [x] AgentStateVectorParallelEnvWrapper 
 - [x] SyncAgentStateVectorParallelEnvWrapper
-- [ ] AsyncAgentStateVectorParallelEnvWrapper
+- [x] AsyncAgentStateVectorParallelEnvWrapper
+
+## Examples
+
+For examples using these environments, wrappers and vector environments, please refer to the [tests/async_vector_env_test.py](tests/async_vector_env_test.py) and [tests/sync_vector_env_test.py](tests/sync_vector_env_test.py).
