@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from copy import deepcopy
-from typing import Callable, Dict, Iterator, Sequence, Tuple
+from typing import Callable, Iterator, Sequence
 
 from loguru import logger
 from pettingzoo.utils.env import ActionType, AgentID, ObsType, ParallelEnv
@@ -214,8 +214,8 @@ class SyncVectorParallelEnv(VectorParallelEnv):
             logger.debug(f"need_autoreset_envs: {self._need_autoreset_envs}")
 
     def reset(
-        self, seed: int | list[int] | Dict[EnvID, int] | None = None, options: dict | None = None
-    ) -> Tuple[Dict[AgentID, Dict[EnvID, ObsType]], Dict[AgentID, Dict[EnvID, Dict]]]:
+        self, seed: int | list[int] | dict[EnvID, int] | None = None, options: dict | None = None
+    ) -> tuple[dict[AgentID, dict[EnvID, ObsType]], dict[AgentID, dict[EnvID, dict]]]:
         if seed is None:
             seed = {env_id: None for env_id in self.env_ids}
         elif isinstance(seed, int):
@@ -250,14 +250,14 @@ class SyncVectorParallelEnv(VectorParallelEnv):
 
         return observation, vector_info
 
-    def step(self, actions: Dict[AgentID, Dict[EnvID, ActionType]]) -> Tuple[
-        Dict[AgentID, Dict[EnvID, ObsType]],
-        Dict[AgentID, Dict[EnvID, float]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, Dict]],
+    def step(self, actions: dict[AgentID, dict[EnvID, ActionType]]) -> tuple[
+        dict[AgentID, dict[EnvID, ObsType]],
+        dict[AgentID, dict[EnvID, float]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, dict]],
     ]:
-        reset_agents: Dict[EnvID] = {}
+        reset_agents: dict[EnvID] = {}
 
         observation = {agent: {} for agent in self.possible_agents}
         reward = {agent: {} for agent in self.possible_agents}
@@ -322,7 +322,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
             for env in self.envs:
                 env.close()
 
-    def state(self) -> Dict[EnvID, ObsType]:
+    def state(self) -> dict[EnvID, ObsType]:
         if self.state_space is None:
             if hasattr(self.envs[0], "state_spaces"):
                 raise RuntimeError(
@@ -335,7 +335,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         return states
 
     @property
-    def num_agents(self) -> Dict[EnvID, int]:
+    def num_agents(self) -> dict[EnvID, int]:
         return {env_id: len(env.agents) for env_id, env in zip(self.env_ids, self.envs)}
 
     def sub_env(self, env_id: EnvID) -> ParallelEnv:
@@ -344,7 +344,7 @@ class SyncVectorParallelEnv(VectorParallelEnv):
         """
         return self._map_env_id_to_env[env_id]
 
-    def __getattr__(self, name: str) -> Tuple:
+    def __getattr__(self, name: str) -> tuple:
         """Returns an attribute with ``name``, unless ``name`` starts with an underscore."""
         if name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")

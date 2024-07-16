@@ -30,7 +30,7 @@ class AgentStateParallelEnvWrapper(pettingzoo.utils.BaseParallelWrapper):
         self.type_only = type_only
         self.agents_old = None
 
-    @functools.lru_cache()
+    @functools.lru_cache
     def state_space(self, agent: AgentID) -> gym.Space:
         return self.state_spaces[agent]
 

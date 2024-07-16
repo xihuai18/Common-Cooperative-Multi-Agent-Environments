@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 from setuptools import find_packages, setup
 
 description = """Common (Cooperative) Multi-agent Environments - A collection of multi-agent environments for reinforcement learning research. The environments support PettingZoo ParallelEnv APIs."""

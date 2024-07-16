@@ -9,7 +9,7 @@ from enum import Enum
 from functools import partial
 from multiprocessing import Queue
 from multiprocessing.connection import Connection
-from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple
+from typing import Any, Callable, Iterator, Sequence
 
 import numpy as np
 from gymnasium.error import AlreadyPendingCallError, CustomSpaceError, NoAsyncCallError
@@ -179,7 +179,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                     AgentID: multiprocessing.Array of shape np.prod(`num_envs`, *`single_observation_space`)
                 } 
                 """
-                self.observations: Tuple[Dict[AgentID, Any]] = read_from_shared_memory(
+                self.observations: tuple[dict[AgentID, Any]] = read_from_shared_memory(
                     self.single_observation_spaces, _obs_buffer, n=self.num_envs
                 )
                 """ 
@@ -222,14 +222,14 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
                 ) from e
         else:
             _obs_buffer = None
-            self.observations: Tuple[Dict[AgentID, Any]] = None
+            self.observations: tuple[dict[AgentID, Any]] = None
             _state_buffer = None
             self.states = None
             _agent_state_buffer = None
             self._agent_states = None
 
-        self.parent_pipes: List[Connection] = []
-        self.processes: List[multiprocessing.Process] = []
+        self.parent_pipes: list[Connection] = []
+        self.processes: list[multiprocessing.Process] = []
         self.error_queue = ctx.Queue()
         target = worker or _async_parallel_env_worker
         with clear_mpi_env_vars():
@@ -337,8 +337,8 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self._raise_if_errors(successes)
 
     def reset(
-        self, seed: int | list[int] | Dict[Any, int] | None = None, options: Dict | None = None
-    ) -> Tuple[Dict[Any, Dict] | Dict[Any, Dict[Any, Dict]]]:
+        self, seed: int | list[int] | dict[Any, int] | None = None, options: dict | None = None
+    ) -> tuple[dict[Any, dict] | dict[Any, dict[Any, dict]]]:
         if seed is None:
             seed = {env_id: None for env_id in self.env_ids}
         elif isinstance(seed, int):
@@ -352,7 +352,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self._reset_async(seed, options)
         return self._reset_await()
 
-    def _reset_async(self, seed: Dict[Any, int], options: Dict | None = None) -> None:
+    def _reset_async(self, seed: dict[Any, int], options: dict | None = None) -> None:
         """
         Send calls to the `reset` methods of the sub-environments.
 
@@ -368,7 +368,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             pipe.send(("reset", {"seed": _seed, "options": options}))
         self._state = AsyncState.WAITING_RESET
 
-    def _reset_await(self, timeout: float | None = None) -> Tuple[Dict[Any, Dict] | Dict[Any, Dict[Any, Dict]]]:
+    def _reset_await(self, timeout: float | None = None) -> tuple[dict[Any, dict] | dict[Any, dict[Any, dict]]]:
         """
         Await the results of the `reset` calls sent by `_reset_async`.
         """
@@ -416,7 +416,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self._state = AsyncState.DEFAULT
         return observation, vector_info
 
-    def state(self, timeout: float | None = None) -> Dict[EnvID, ObsType]:
+    def state(self, timeout: float | None = None) -> dict[EnvID, ObsType]:
         """
         Return the state of all sub environments.
         """
@@ -458,7 +458,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self._state = AsyncState.DEFAULT
         return state
 
-    def _agent_state(self) -> Dict[AgentID, Dict[EnvID, ObsType]]:
+    def _agent_state(self) -> dict[AgentID, dict[EnvID, ObsType]]:
         """
         Return the state of all sub environments.
         """
@@ -499,17 +499,17 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         self._state = AsyncState.DEFAULT
         return state
 
-    def step(self, actions: Dict[AgentID, Dict[EnvID, ActionType]]) -> Tuple[
-        Dict[AgentID, Dict[EnvID, ObsType]],
-        Dict[AgentID, Dict[EnvID, float]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, Dict]],
+    def step(self, actions: dict[AgentID, dict[EnvID, ActionType]]) -> tuple[
+        dict[AgentID, dict[EnvID, ObsType]],
+        dict[AgentID, dict[EnvID, float]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, dict]],
     ]:
         self._step_async(actions)
         return self._step_await()
 
-    def _step_async(self, actions: Dict[AgentID, Dict[EnvID, ActionType]]) -> None:
+    def _step_async(self, actions: dict[AgentID, dict[EnvID, ActionType]]) -> None:
         """
         Send calls to the `step` methods of the sub-environments.
 
@@ -529,12 +529,12 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             pipe.send(("step", action))
         self._state = AsyncState.WAITING_STEP
 
-    def _step_await(self, timeout: float | None = None) -> Tuple[
-        Dict[AgentID, Dict[EnvID, ObsType]],
-        Dict[AgentID, Dict[EnvID, float]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, Dict]],
+    def _step_await(self, timeout: float | None = None) -> tuple[
+        dict[AgentID, dict[EnvID, ObsType]],
+        dict[AgentID, dict[EnvID, float]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, dict]],
     ]:
         if self._state != AsyncState.WAITING_STEP:
             raise NoAsyncCallError(
@@ -553,7 +553,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         vector_info = {agent: {} for agent in self.possible_agents}
 
         successes = []
-        reset_agents: Dict[EnvID, bool] = {env_id: False for env_id in self.env_ids}
+        reset_agents: dict[EnvID, bool] = {env_id: False for env_id in self.env_ids}
         for i, env_id in enumerate(self.env_ids):
             pipe = self._map_env_id_to_parent_pipe[env_id]
             (obs, rew, term, trunc, info), success = pipe.recv()
@@ -630,7 +630,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
             pipe.send(("_call", (name, args, kwargs)))
         self._state = AsyncState.WAITING_CALL
 
-    def _call_await(self, timeout: int | float | None = None) -> Dict[EnvID, Any]:
+    def _call_await(self, timeout: int | float | None = None) -> dict[EnvID, Any]:
         """Calls all parent pipes and waits for the results.
 
         Args:
@@ -669,7 +669,7 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         return True
 
     @property
-    def num_agents(self) -> Dict[EnvID, int]:
+    def num_agents(self) -> dict[EnvID, int]:
         return {env_id: len(self.agents[env_id]) for env_id in self.env_ids}
 
     def close_extras(self, timeout: int | float | None = None, terminate: bool = False) -> None:
@@ -715,8 +715,8 @@ def _async_parallel_env_worker(
     env_fn: Callable[[], ParallelEnv],
     pipe: Connection,
     parent_pipe: Connection,
-    shared_memory_observation: multiprocessing.Array | Dict[str, Any] | Tuple[Any, ...] | None,
-    shared_memory_state: multiprocessing.Array | Dict[str, Any] | Tuple[Any, ...] | None,
+    shared_memory_observation: multiprocessing.Array | dict[str, Any] | tuple[Any, ...] | None,
+    shared_memory_state: multiprocessing.Array | dict[str, Any] | tuple[Any, ...] | None,
     error_queue: Queue,
 ):
     """

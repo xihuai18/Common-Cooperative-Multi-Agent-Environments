@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import functools
 from collections import defaultdict
-from typing import Any, Dict, Generic, List, Tuple, TypeVar
+from typing import Any, Generic, TypeVar
 
 import gymnasium as gym
 from pettingzoo.utils.env import ActionType, AgentID, ObsType
@@ -39,36 +39,36 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
 
     num_envs: int
 
-    possible_agents: Tuple[AgentID]
-    agents: Dict[EnvID, Tuple[AgentID]]
-    agents_old: Dict[EnvID, Tuple[AgentID]]
-    env_ids: Tuple[EnvID]
-    _envs_have_agents: Dict[AgentID, List[EnvID]] = defaultdict(list)
+    possible_agents: tuple[AgentID]
+    agents: dict[EnvID, tuple[AgentID]]
+    agents_old: dict[EnvID, tuple[AgentID]]
+    env_ids: tuple[EnvID]
+    _envs_have_agents: dict[AgentID, list[EnvID]] = defaultdict(list)
 
     # Spaces for each agents and all sub-environment
-    observation_spaces: Dict[AgentID, gym.spaces.Dict]
-    action_spaces: Dict[AgentID, gym.spaces.Dict]
+    observation_spaces: dict[AgentID, gym.spaces.Dict]
+    action_spaces: dict[AgentID, gym.spaces.Dict]
 
     # Spaces for each agents and one sub-environment
-    single_observation_spaces: Dict[AgentID, gym.spaces.Space]
-    single_action_spaces: Dict[AgentID, gym.spaces.Space]
+    single_observation_spaces: dict[AgentID, gym.spaces.Space]
+    single_action_spaces: dict[AgentID, gym.spaces.Space]
 
     closed: bool = False
 
     def reset(
-        self, seed: int | list[int] | Dict[EnvID, int] | None = None, options: dict | None = None
-    ) -> Tuple[Dict[AgentID, Dict[EnvID, ObsType]], Dict[AgentID, Dict[EnvID, Dict]]]:
+        self, seed: int | list[int] | dict[EnvID, int] | None = None, options: dict | None = None
+    ) -> tuple[dict[AgentID, dict[EnvID, ObsType]], dict[AgentID, dict[EnvID, dict]]]:
         """
         Reset all parallel environments and return a batch of initial observations and info.
         """
         raise NotImplementedError
 
-    def step(self, actions: Dict[AgentID, Dict[EnvID, ActionType]]) -> Tuple[
-        Dict[AgentID, Dict[EnvID, ObsType]],
-        Dict[AgentID, Dict[EnvID, float]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, bool]],
-        Dict[AgentID, Dict[EnvID, Dict]],
+    def step(self, actions: dict[AgentID, dict[EnvID, ActionType]]) -> tuple[
+        dict[AgentID, dict[EnvID, ObsType]],
+        dict[AgentID, dict[EnvID, float]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, bool]],
+        dict[AgentID, dict[EnvID, dict]],
     ]:
         """
         Step all parallel environments with the given actions and return a batch of results.
@@ -108,61 +108,61 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
 
         return f"VectorParallelEnv(num_envs={self.num_envs})"
 
-    def state(self) -> Dict[EnvID, ObsType]:
+    def state(self) -> dict[EnvID, ObsType]:
         """
         Return the state of all parallel environments.
         """
         raise NotImplementedError
 
-    @functools.lru_cache()
+    @functools.lru_cache
     def single_observation_space(self, agent: AgentID) -> gym.Space:
         """
         Return the observation space for the given agent in a sub-environment.
         """
         return self.single_observation_spaces[agent]
 
-    @functools.lru_cache()
+    @functools.lru_cache
     def observation_space(self, agent: AgentID) -> gym.Space:
         """
         Return the observation space for the given agent.
         """
         return self.observation_spaces[agent]
 
-    @functools.lru_cache()
+    @functools.lru_cache
     def single_action_space(self, agent: AgentID) -> gym.Space:
         """
         Return the action space for the given agent in a sub-environment.
         """
         return self.single_action_spaces[agent]
 
-    @functools.lru_cache()
+    @functools.lru_cache
     def action_space(self, agent: AgentID) -> gym.Space:
         """
         Return the action space for the given agent.
         """
         return self.action_spaces[agent]
 
-    def envs_have_agent(self, agent: AgentID) -> Tuple[EnvID]:
+    def envs_have_agent(self, agent: AgentID) -> tuple[EnvID]:
         """
         return the sub environment indices that have the agent
         """
         return tuple(self._envs_have_agents[agent])
 
     @property
-    def envs_have_agents(self) -> Dict[AgentID, Tuple[EnvID]]:
+    def envs_have_agents(self) -> dict[AgentID, tuple[EnvID]]:
         """
         return the sub environment indices that have the agent
         """
         return {agent: tuple(self._envs_have_agents[agent]) for agent in self._envs_have_agents.keys()}
 
     def add_info_in_place(
-        self, vector_info: Dict[AgentID, Dict[Any, Dict[EnvID, Any]]], env_info: Dict[AgentID, Dict], env_id: EnvID
+        self, vector_info: dict[AgentID, dict[Any, dict[EnvID, Any]]], env_info: dict[AgentID, dict], env_id: EnvID
     ):
         """
         add an env_info for env_id into the vector_info.
         """
 
-        def _merge(_vector_info: Dict[Any, Dict[EnvID, Any]], _env_info: Dict):
+        def _merge(_vector_info: dict[Any, dict[EnvID, Any]], _env_info: dict):
             """
             Merge values in _env_info into _vector_info.
             """
@@ -180,8 +180,8 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
                 _merge(vector_info[agent], env_info[agent])
 
     def construct_batch_result_in_place(
-        self, result: Dict[AgentID, Dict[EnvID, Any]]
-    ) -> Dict[AgentID, Dict[EnvID, Any]]:
+        self, result: dict[AgentID, dict[EnvID, Any]]
+    ) -> dict[AgentID, dict[EnvID, Any]]:
         """
         remove empty agent results.
         """
@@ -190,13 +190,13 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
                 result.pop(agent)
 
     @property
-    def num_agents(self) -> Dict[EnvID, Tuple[int]]:
+    def num_agents(self) -> dict[EnvID, tuple[int]]:
         """return the number of agents in each sub-environment."""
         raise NotImplementedError
 
     @property
     def max_num_agents(self) -> int:
-        """return the maximum number of agents in all\ sub-environments."""
+        r"""return the maximum number of agents in all\ sub-environments."""
         return len(self.possible_agents)
 
     def _update_envs_have_agents(self):
@@ -210,7 +210,7 @@ class VectorParallelEnv(Generic[EnvID, AgentID, ObsType, ActionType]):
             for agent in remove_agents:
                 self._envs_have_agents[agent].remove(env_id)
 
-    def _check_containing_agents(self, agents: Tuple[AgentID], env_results: Dict[AgentID, Any]) -> bool:
+    def _check_containing_agents(self, agents: tuple[AgentID], env_results: dict[AgentID, Any]) -> bool:
         assert set(agents) == set(
             env_results.keys()
         ), f"The agents in the environment {sorted(list(agents))} should be the same as the agents in the results {sorted(list(env_results.keys()))}."
