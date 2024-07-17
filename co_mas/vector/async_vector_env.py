@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import sys
 import time
 import traceback
 from collections import defaultdict
@@ -312,10 +313,11 @@ class AsyncVectorParallelEnv(VectorParallelEnv):
         num_errors = self.num_envs - sum(successes)
         assert num_errors > 0
         for i in range(num_errors):
-            index, exctype, value = self.error_queue.get()
+            index, exctype, value, trace = self.error_queue.get()
 
-            logger.error(f"Received the following error from Worker-{index}: {exctype.__name__}: {value}")
+            logger.error(f"Received the following error from Worker-{index}: {exctype.__name__} - {value}")
             logger.error(f"Shutting down Worker-{index}.")
+            logger.error(f"{trace}")
 
             self.parent_pipes[index].close()
             self.parent_pipes[index] = None
@@ -842,9 +844,10 @@ def _async_parallel_env_worker(
                 raise RuntimeError(
                     f"Received unknown command `{command}`. Must be one of [`reset`, `step`, `state`, `agents`, `close`, `_call`, `_setattr`, `_check_spaces`]."
                 )
-    except (KeyboardInterrupt, Exception) as e:
-        exc_message = traceback.format_exc()
-        error_queue.put((index, type(e), exc_message))
+    except (KeyboardInterrupt, Exception):
+        error_type, error_message, _ = sys.exc_info()
+        trace = traceback.format_exc()
+        error_queue.put((index, error_type, error_message, trace))
         pipe.send((None, False))
     finally:
         env.close()
